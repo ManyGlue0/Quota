@@ -1,13 +1,11 @@
 import { ChevronLeft } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { api, type HolsterStatus, type ProviderState, type Settings } from "../lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, type HolsterStatus, type KeyStatus, type ProviderState } from "../lib/api";
 import { Logo } from "../lib/providers";
 import { useStore } from "../lib/store";
 import { useReportHeight } from "./Panel";
 import { Dot, Row, Section } from "./settingsUi";
-import { IconButton, PinButton, Segmented, Toggle } from "./ui";
-
-type ProviderId = keyof Settings["providers"];
+import { Button, IconButton, PinButton, Segmented, Toggle } from "./ui";
 
 export function SettingsPage() {
   const settings = useStore((s) => s.settings);
@@ -38,17 +36,7 @@ export function SettingsPage() {
       </header>
       <div className="page-scroll">
       {settings && <div className="page-content settings-content" ref={content}>
-        <Section title="Providers">
-          {(usage?.providers ?? []).map((p) => (
-            <Row key={p.id} icon={<Logo id={p.id} size={16} />} label={p.name} hint={providerHint(p, settings.providers[p.id as ProviderId])} warn={p.enabled && (p.status === "error" || p.status === "signedOut")}>
-              <Toggle
-                label={p.name}
-                on={settings.providers[p.id as ProviderId]}
-                onChange={(v) => update({ providers: { [p.id]: v } })}
-              />
-            </Row>
-          ))}
-        </Section>
+        <ProvidersSection providers={usage?.providers ?? []} />
 
         <Section title="Updates">
           <Row
@@ -127,8 +115,121 @@ export function SettingsPage() {
   );
 }
 
-function providerHint(p: ProviderState, on: boolean): string {
+/** Every provider, in OpenUsage's order, with its on switch. Key-based
+ *  providers (OpenRouter, Z.ai) take their API key right in their row. */
+function ProvidersSection({ providers }: { providers: ProviderState[] }) {
+  const settings = useStore((s) => s.settings);
+  const update = useStore((s) => s.updateSettings);
+  const [keys, setKeys] = useState<KeyStatus[]>([]);
+  const reload = useCallback(() => {
+    api.providerKeys().then(setKeys);
+  }, []);
+  useEffect(reload, [reload]);
+  if (!settings) return null;
+  return (
+    <Section title="Providers">
+      {providers.map((p) => {
+        const on = settings.providers[p.id] ?? false;
+        const key = keys.find((k) => k.id === p.id);
+        return (
+          <div key={p.id} className="provider-setting">
+            <Row
+              icon={<Logo id={p.id} size={16} />}
+              label={p.name}
+              hint={providerHint(p, on, key)}
+              warn={on && (p.status === "error" || (p.status === "signedOut" && key?.source !== "none"))}
+            >
+              <Toggle label={p.name} on={on} onChange={(v) => update({ providers: { [p.id]: v } })} />
+            </Row>
+            {key && on && <KeyEditor name={p.name} status={key} onChange={reload} />}
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
+const KEY_PAGES: Record<string, string> = {
+  openrouter: "openrouter.ai/keys",
+  zai: "z.ai/manage-apikey",
+};
+
+function KeyEditor({ name, status, onChange }: { name: string; status: KeyStatus; onChange: () => void }) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useStore((s) => s.toast);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      useStore.setState({ settings: await api.setProviderKey(status.id, draft) });
+      setDraft("");
+      toast(`${name} key saved`);
+      onChange();
+    } catch (e) {
+      setError(String(e));
+    }
+    setBusy(false);
+  };
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await api.clearProviderKey(status.id);
+      toast(`${name} key removed`);
+      onChange();
+    } catch (e) {
+      setError(String(e));
+    }
+    setBusy(false);
+  };
+
+  if (status.source === "saved")
+    return (
+      <div className="key-row saved">
+        <span className="key-note">Key saved in Windows Credential Manager</span>
+        <Button variant="ghost" className="key-btn" disabled={busy} onClick={remove}>
+          Remove
+        </Button>
+      </div>
+    );
+  return (
+    <form
+      className="key-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (draft.trim()) save();
+      }}
+    >
+      <div className="key-field">
+        <input
+          className="text-input mono key-input"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={status.source === "env" ? `Using ${status.env[0]}` : "Paste your API key"}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <Button variant="primary" className="key-btn" type="submit" disabled={busy || !draft.trim()}>
+          Save
+        </Button>
+      </div>
+      {error ? (
+        <span className="key-note warn">{error}</span>
+      ) : (
+        <span className="key-note">
+          {status.source === "env" ? "Paste one here to use it instead" : `Make one at ${KEY_PAGES[status.id] ?? name}. Kept in Windows Credential Manager`}
+        </span>
+      )}
+    </form>
+  );
+}
+
+function providerHint(p: ProviderState, on: boolean, key?: KeyStatus): string {
   if (!on) return "Off";
+  if (key?.source === "none") return "Needs an API key";
   switch (p.status) {
     case "ok":
     case "stale":

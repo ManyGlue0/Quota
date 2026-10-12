@@ -16,7 +16,6 @@
 //! Claude Code's saved login, read from disk and never sent anywhere.
 
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::time::Duration;
 
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone};
@@ -26,30 +25,14 @@ use super::*;
 
 const INSTALL: &str = "Install Claude Code to see your Claude limits";
 const SIGN_IN: &str = "Run claude in a terminal and sign in";
-const NO_WINDOW: u32 = 0x0800_0000; // CREATE_NO_WINDOW
 
-/// Where Claude Code lives: the native installer's `~/.local/bin`, then PATH,
-/// then npm's shim (which needs cmd to run).
+/// Where Claude Code lives: the native installer's `~/.local/bin`, then PATH.
 fn claude_command() -> Option<tokio::process::Command> {
-    let home = home();
-    let native = home.as_ref().map(|h| h.join(".local").join("bin").join("claude.exe"));
-    if let Some(exe) = native.filter(|p| p.is_file()) {
-        return Some(tokio::process::Command::new(exe));
-    }
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path) {
-        let exe = dir.join("claude.exe");
-        if exe.is_file() {
-            return Some(tokio::process::Command::new(exe));
-        }
-        let shim = dir.join("claude.cmd");
-        if shim.is_file() {
-            let mut cmd = tokio::process::Command::new("cmd");
-            cmd.arg("/C").arg(shim);
-            return Some(cmd);
-        }
-    }
-    None
+    find_command("claude", &[home()?.join(".local").join("bin")])
+}
+
+pub fn has_login() -> bool {
+    claude_command().is_some()
 }
 
 /// A settings file that turns hooks off for the check (a user's SessionStart
@@ -64,19 +47,12 @@ fn quiet_settings() -> PathBuf {
 
 pub async fn fetch() -> FetchResult {
     let mut cmd = claude_command().ok_or_else(|| FetchError::SignedOut(INSTALL.into()))?;
-    cmd.args(["-p", "/usage", "--no-session-persistence", "--strict-mcp-config", "--settings"])
-        .arg(quiet_settings())
-        .current_dir(home().unwrap_or_else(std::env::temp_dir))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .creation_flags(NO_WINDOW)
-        .kill_on_drop(true);
-    let child = cmd.spawn().map_err(|_| FetchError::SignedOut(INSTALL.into()))?;
-    let out = tokio::time::timeout(Duration::from_secs(45), child.wait_with_output())
-        .await
-        .map_err(|_| FetchError::failed("Claude Code took too long to answer"))?
-        .map_err(|_| FetchError::failed("Couldn't run Claude Code"))?;
+    cmd.args(["-p", "/usage", "--no-session-persistence", "--strict-mcp-config", "--settings"]).arg(quiet_settings());
+    let out = run_quiet(cmd, Duration::from_secs(45)).await.map_err(|e| match e {
+        RunError::Spawn => FetchError::SignedOut(INSTALL.into()),
+        RunError::Timeout => FetchError::failed("Claude Code took too long to answer"),
+        RunError::Io => FetchError::failed("Couldn't run Claude Code"),
+    })?;
     let text = String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     let metrics = parse_usage(&text, Local::now().naive_local());
     if metrics.is_empty() {
@@ -136,9 +112,11 @@ pub fn parse_usage(text: &str, now: chrono::NaiveDateTime) -> Vec<Metric> {
         if !rest[pct_end + 1..].trim_start().starts_with("used") {
             continue;
         }
+        // "· resets Oct 16, 6pm" or "Resets Oct 16 at 6pm".
         let resets = rest
-            .split_once("resets")
-            .and_then(|(_, r)| parse_reset(r.trim(), now))
+            .to_ascii_lowercase()
+            .find("resets")
+            .and_then(|i| parse_reset(rest[i + "resets".len()..].trim(), now))
             .and_then(|dt| Local.from_local_datetime(&dt).earliest())
             .map(|d| d.timestamp_millis());
         let (id, label, period) = classify(name.trim());
@@ -172,9 +150,10 @@ fn classify(name: &str) -> (String, String, Option<i64>) {
     (id, name.to_string(), None)
 }
 
-/// "Oct 10, 1am (Europe/Rome)", "Oct 16, 6:30pm", "1am": the next such moment.
+/// "Oct 10, 1am (Europe/Rome)", "Oct 16 at 6:30pm", "1am": the next such moment.
 fn parse_reset(text: &str, now: chrono::NaiveDateTime) -> Option<chrono::NaiveDateTime> {
-    let text = text.split('(').next().unwrap_or(text).trim().trim_end_matches(',');
+    let text = text.split('(').next().unwrap_or(text).trim().trim_end_matches(',').replace(" at ", ", ");
+    let text = text.as_str();
     let (date_part, time_part) = match text.rsplit_once(',') {
         Some((d, t)) => (Some(d.trim()), t.trim()),
         None if text.chars().next().is_some_and(|c| c.is_ascii_digit()) => (None, text),
@@ -261,12 +240,43 @@ mod tests {
         assert_eq!(m[2].resets_at, Some(local("2026-10-16 18:30")));
     }
 
+    /// Pro on Claude Code 2.1.296 (2026-10-12): the breakdown under the limits
+    /// has colons and percentages too.
+    #[test]
+    fn skips_the_usage_breakdown() {
+        let text = "Current session: 23% used · resets Oct 12, 11:39pm (Europe/Rome)\n\
+            Current week (all models): 80% used · resets Oct 16, 5:59pm (Europe/Rome)\n\n\
+            What's contributing to your limits usage?\n\
+            Last 24h · 571 requests · 5 sessions\n  89% of your usage was at >150k context\n\
+            \x20 Top skills: /dataviz 22%, /holster-app 11%\n\
+            \x20 Top plugins: frontend-design 1%\n  Top MCP servers: claude-in-chrome 2%, anotes 1%\n";
+        let m = parse_usage(text, at("2026-10-12 19:00"));
+        let ids: Vec<_> = m.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["session", "weekly"]);
+    }
+
+    /// Max: Fable's own weekly meter, as quoted in anthropics/claude-code#79412
+    /// (2.1.205), with "Resets … at …".
+    #[test]
+    fn parses_the_fable_limit() {
+        let text = "Current week (all models):  3% used   Resets Jul 20 at 2:59pm (America/New_York)\n\
+            Current week (Fable):       5% used   Resets Jul 20 at 2:59pm (America/New_York)\n";
+        let m = parse_usage(text, at("2026-07-14 09:00"));
+        let ids: Vec<_> = m.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["weekly", "fable"]);
+        assert_eq!((m[1].label.as_str(), m[1].used, m[1].primary), ("Fable", 5.0, false));
+        let local = |s: &str| Local.from_local_datetime(&at(s)).earliest().unwrap().timestamp_millis();
+        assert_eq!(m[0].resets_at, Some(local("2026-07-20 14:59")));
+        assert_eq!(m[1].resets_at, Some(local("2026-07-20 14:59")));
+    }
+
     #[test]
     fn resets_roll_into_next_year_and_day() {
         assert_eq!(parse_reset("Jan 2, 9am (UTC)", at("2026-12-30 10:00")), Some(at("2027-01-02 09:00")));
         assert_eq!(parse_reset("1am", at("2026-10-09 22:00")), Some(at("2026-10-10 01:00")));
         assert_eq!(parse_reset("12pm", at("2026-10-09 08:00")), Some(at("2026-10-09 12:00")));
         assert_eq!(parse_reset("Oct 16, 18:00", at("2026-10-09 08:00")), Some(at("2026-10-16 18:00")));
+        assert_eq!(parse_reset("Oct 16 at 6pm (UTC)", at("2026-10-09 08:00")), Some(at("2026-10-16 18:00")));
     }
 
     #[test]

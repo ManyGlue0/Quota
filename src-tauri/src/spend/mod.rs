@@ -10,6 +10,8 @@
 pub mod claude;
 pub mod codex;
 pub mod cursor;
+pub mod grok;
+pub mod opencode;
 pub mod pricing;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -19,6 +21,31 @@ use std::time::SystemTime;
 
 use chrono::{Local, TimeZone};
 use serde::{Deserialize, Serialize};
+
+/// Spend from logs on this machine, for providers that keep them. Blocking:
+/// run off the async runtime. `None`: no local logs for this provider.
+pub fn scan_local(id: &str) -> Option<Spend> {
+    match id {
+        "claude" => claude::scan(),
+        "codex" => codex::scan(),
+        "grok" => grok::scan(),
+        "opencode" => opencode::scan(),
+        _ => None,
+    }
+}
+
+/// Spend that has to be downloaded (Cursor's usage export).
+pub async fn fetch_remote(id: &str) -> Option<Spend> {
+    match id {
+        "cursor" => cursor::fetch().await,
+        _ => None,
+    }
+}
+
+/// Providers whose spend comes from the network, skipped at launch.
+pub fn is_remote(id: &str) -> bool {
+    id == "cursor"
+}
 
 /// Days of history kept (today included).
 pub const DAYS: i64 = 30;
@@ -217,7 +244,8 @@ mod real {
     #[test]
     #[ignore]
     fn real_logs() {
-        for (name, scan) in [("claude", super::claude::scan as fn() -> Option<super::Spend>), ("codex", super::codex::scan)] {
+        for name in ["claude", "codex", "grok", "opencode"] {
+            let scan = || super::scan_local(name);
             let t = std::time::Instant::now();
             let s = scan().unwrap();
             let cold = t.elapsed();

@@ -1,6 +1,7 @@
 mod commands;
 mod holster;
 mod providers;
+mod secrets;
 mod settings;
 mod spend;
 mod shell;
@@ -48,10 +49,7 @@ impl Core {
         if before.launch_at_startup != after.launch_at_startup {
             sync_autostart(app, after.launch_at_startup);
         }
-        let providers_changed = before.providers.claude != after.providers.claude
-            || before.providers.codex != after.providers.codex
-            || before.providers.cursor != after.providers.cursor;
-        if providers_changed || before.refresh_minutes != after.refresh_minutes {
+        if before.providers != after.providers || before.refresh_minutes != after.refresh_minutes {
             self.poller.apply_settings(after);
         }
     }
@@ -222,6 +220,9 @@ pub fn run() {
             commands::usage_refresh,
             commands::get_settings,
             commands::update_settings,
+            commands::provider_keys,
+            commands::set_provider_key,
+            commands::clear_provider_key,
             commands::holster_status,
             commands::app_info,
         ])

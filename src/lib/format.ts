@@ -4,7 +4,7 @@ import type { Metric, Spend } from "./api";
 /** How full a limit is (0–100), when it has one. */
 export function fill(m: Metric): number | null {
   if (m.kind === "percent") return m.used;
-  if (m.kind === "money" && m.limit && m.limit > 0) return Math.min(100, (m.used / m.limit) * 100);
+  if ((m.kind === "money" || m.kind === "count") && m.limit && m.limit > 0) return Math.min(100, (m.used / m.limit) * 100);
   return null;
 }
 

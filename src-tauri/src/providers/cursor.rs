@@ -26,6 +26,10 @@ fn db_path() -> Option<PathBuf> {
     Some(PathBuf::from(appdata).join("Cursor").join("User").join("globalStorage").join("state.vscdb"))
 }
 
+pub fn has_login() -> bool {
+    db_path().is_some_and(|p| p.exists())
+}
+
 fn read_tokens() -> Result<(Option<String>, Option<String>), FetchError> {
     let path = db_path().filter(|p| p.exists()).ok_or_else(|| FetchError::SignedOut(SIGN_IN.into()))?;
     let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)

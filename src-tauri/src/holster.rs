@@ -40,6 +40,29 @@ const COLOR: &str = "#2B7EFF";
 /// Quota's mark (white, transparent), drawn untinted on the tile.
 const ICON_SVG: &str = include_str!("../icons/quota-glyph.svg");
 const PREVIEW_HTML: &str = include_str!("../holster-preview/index.html");
+/// Provider marks, the same files the panel draws, with their tints (None:
+/// the text color; src/lib/providers.tsx has the same tints).
+const LOGOS: &[(&str, &str, Option<&str>)] = &[
+    ("antigravity", include_str!("../../src/assets/providers/antigravity.svg"), Some("#4285F4")),
+    ("claude", include_str!("../../src/assets/providers/claude.svg"), Some("#DE7356")),
+    ("codex", include_str!("../../src/assets/providers/codex.svg"), None),
+    ("copilot", include_str!("../../src/assets/providers/copilot.svg"), None),
+    ("cursor", include_str!("../../src/assets/providers/cursor.svg"), None),
+    ("devin", include_str!("../../src/assets/providers/devin.svg"), None),
+    ("grok", include_str!("../../src/assets/providers/grok.svg"), None),
+    ("muse", include_str!("../../src/assets/providers/muse.svg"), Some("#0082FB")),
+    ("ollama", include_str!("../../src/assets/providers/ollama.svg"), None),
+    ("opencode", include_str!("../../src/assets/providers/opencode.svg"), None),
+    ("openrouter", include_str!("../../src/assets/providers/openrouter.svg"), None),
+    ("zai", include_str!("../../src/assets/providers/zai.svg"), None),
+];
+
+/// The preview page with the logo table filled in.
+fn preview_html() -> String {
+    let logos: serde_json::Map<String, Value> =
+        LOGOS.iter().map(|(id, svg, tint)| (id.to_string(), json!({ "svg": svg.trim(), "tint": tint }))).collect();
+    PREVIEW_HTML.replacen("/*QUOTA_LOGOS*/ {}", &Value::Object(logos).to_string(), 1)
+}
 /// Preview card layout (CSS px), mirrored by the page's CSS. The page resizes
 /// itself when the row count changes; this only sizes the first showing.
 const PREVIEW_WIDTH: u32 = 300;
@@ -112,7 +135,7 @@ pub fn start(app: AppHandle, data_dir: &Path, snap: &Snapshot) {
     });
     let _ = HOLSTER.set(me.clone());
     let _ = std::fs::create_dir_all(&me.dir);
-    for (name, text) in [("index.html", PREVIEW_HTML), ("icon.svg", ICON_SVG)] {
+    for (name, text) in [("index.html", preview_html().as_str()), ("icon.svg", ICON_SVG)] {
         if let Err(e) = write_if_changed(&me.dir.join(name), text) {
             eprintln!("holster: couldn't write {name}: {e}");
         }
@@ -371,6 +394,17 @@ mod tests {
         assert!(!is_loopback_origin("http://127.0.0.1.evil.com"));
         assert!(!is_loopback_origin("https://example.com"));
         assert!(!is_loopback_origin("null"));
+    }
+
+    #[test]
+    fn preview_gets_every_logo() {
+        let html = preview_html();
+        assert!(!html.contains("/*QUOTA_LOGOS*/"));
+        for p in crate::providers::PROVIDERS {
+            assert!(LOGOS.iter().any(|(id, _, _)| *id == p.id), "{} has no logo", p.id);
+        }
+        // A provider's name can't break out of the script: markup is data in a JSON string.
+        assert!(!html.contains("</script><svg"));
     }
 
     #[test]

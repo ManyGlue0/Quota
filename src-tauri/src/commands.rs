@@ -81,6 +81,58 @@ fn merge(a: &mut Value, b: Value) {
     }
 }
 
+// ---- API keys ------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyStatus {
+    id: String,
+    source: crate::secrets::KeySource,
+    env: Vec<&'static str>,
+}
+
+/// Where each key-based provider's key comes from (never the key itself).
+#[tauri::command]
+pub async fn provider_keys() -> Res<Vec<KeyStatus>> {
+    Ok(crate::providers::PROVIDERS
+        .iter()
+        .filter_map(|p| {
+            let env = crate::providers::key_env(p.id)?;
+            Some(KeyStatus { id: p.id.into(), source: crate::secrets::api_key(p.id, env).1, env: env.to_vec() })
+        })
+        .collect())
+}
+
+/// Saves a pasted key in Windows Credential Manager and turns the provider on.
+#[tauri::command]
+pub async fn set_provider_key(app: AppHandle, core: C<'_>, id: String, key: String) -> Res<Settings> {
+    if crate::providers::key_env(&id).is_none() {
+        return Err("This provider doesn't take a key".into());
+    }
+    let key = key.trim();
+    if key.is_empty() || key.len() > 4096 || key.chars().any(char::is_whitespace) {
+        return Err("That doesn't look like an API key".into());
+    }
+    crate::secrets::set(&id, key)?;
+    let before = core.prefs.get();
+    let after = core.prefs.update(|s| {
+        s.providers.insert(id.clone(), true);
+    });
+    core.apply_settings_change(&app, &before, &after);
+    core.poller.refresh();
+    Ok(after)
+}
+
+#[tauri::command]
+pub async fn clear_provider_key(core: C<'_>, id: String) -> Res<()> {
+    if crate::providers::key_env(&id).is_none() {
+        return Err("This provider doesn't take a key".into());
+    }
+    crate::secrets::delete(&id)?;
+    core.poller.refresh();
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn holster_status() -> Res<crate::holster::HolsterStatus> {
     Ok(crate::holster::status())

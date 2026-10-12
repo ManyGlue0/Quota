@@ -1,5 +1,6 @@
 //! User settings, persisted as JSON in the app's data folder.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -26,36 +27,16 @@ pub struct Settings {
     /// Total spend card: "cost" | "tokens".
     pub spend_metric: String,
     pub refresh_minutes: u32,
-    pub providers: ProviderToggles,
+    /// Provider id → on. Absent means off.
+    pub providers: BTreeMap<String, bool>,
+    /// Every provider this install has seen. A provider missing from both
+    /// lists is new: it turns on once, only if its login is on this machine,
+    /// and is the user's to manage after that.
+    pub known_providers: Vec<String>,
     /// Holster's tab glows when a limit crosses this percentage (0 = off).
     pub alert_at: u32,
     /// Holster's tab glows when a limit you were close to resets.
     pub glow_on_reset: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ProviderToggles {
-    pub claude: bool,
-    pub codex: bool,
-    pub cursor: bool,
-}
-
-impl ProviderToggles {
-    pub fn enabled(&self, id: &str) -> bool {
-        match id {
-            "claude" => self.claude,
-            "codex" => self.codex,
-            "cursor" => self.cursor,
-            _ => false,
-        }
-    }
-}
-
-impl Default for ProviderToggles {
-    fn default() -> Self {
-        Self { claude: true, codex: true, cursor: true }
-    }
 }
 
 impl Default for Settings {
@@ -70,7 +51,8 @@ impl Default for Settings {
             expanded: Vec::new(),
             spend_metric: "cost".into(),
             refresh_minutes: 0,
-            providers: ProviderToggles::default(),
+            providers: BTreeMap::new(),
+            known_providers: Vec::new(),
             alert_at: 80,
             glow_on_reset: true,
         }
@@ -78,6 +60,31 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn provider_on(&self, id: &str) -> bool {
+        self.providers.get(id).copied().unwrap_or(false)
+    }
+
+    /// Turns on providers this install has never seen, if their login is on
+    /// this machine (local files and saved keys only, never the network).
+    /// Returns whether anything changed.
+    fn discover_providers(&mut self, has_login: impl Fn(&str) -> bool) -> bool {
+        // Settings from before this list existed: what they have toggles for was seen.
+        if self.known_providers.is_empty() {
+            self.known_providers = self.providers.keys().cloned().collect();
+        }
+        let mut changed = false;
+        for p in crate::providers::PROVIDERS.iter() {
+            if self.known_providers.iter().any(|k| k == p.id) {
+                continue;
+            }
+            self.known_providers.push(p.id.to_string());
+            let on = p.auto_enable && has_login(p.id);
+            self.providers.insert(p.id.to_string(), on);
+            changed = true;
+        }
+        changed
+    }
+
     fn normalized(mut self) -> Self {
         if self.spend_metric != "tokens" {
             self.spend_metric = "cost".into();
@@ -105,12 +112,13 @@ impl SettingsStore {
     }
 
     pub fn load(&self) -> Settings {
-        let s: Settings = std::fs::read_to_string(&self.path)
+        let mut s: Settings = std::fs::read_to_string(&self.path)
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default();
+        let discovered = s.discover_providers(crate::providers::has_login);
         let s = s.normalized();
-        if !self.path.exists() {
+        if discovered || !self.path.exists() {
             let _ = self.save(&s);
         }
         s
@@ -146,5 +154,25 @@ impl Prefs {
         *s = s.clone().normalized();
         let _ = self.store.save(&s);
         s.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_providers_turn_on_once_and_only_with_a_login() {
+        // Settings from 0.1.x: three toggles, no known list.
+        let mut s: Settings = serde_json::from_str(r#"{"providers":{"claude":true,"codex":false,"cursor":true}}"#).unwrap();
+        assert!(s.discover_providers(|id| id == "grok" || id == "codex" || id == "ollama"));
+        assert!(s.provider_on("claude") && !s.provider_on("codex"), "earlier choices stay");
+        assert!(s.provider_on("grok"), "a new provider with a login turns on");
+        assert!(!s.provider_on("ollama"), "Ollama never turns itself on");
+        assert!(!s.provider_on("openrouter"));
+        // Turned off by the user: never back on.
+        s.providers.insert("grok".into(), false);
+        assert!(!s.discover_providers(|_| true));
+        assert!(!s.provider_on("grok") && !s.provider_on("openrouter"));
     }
 }

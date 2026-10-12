@@ -119,7 +119,7 @@ impl Poller {
                 st.name = p.name.into();
                 st.color = p.color.into();
                 st.icon = p.icon.into();
-                st.enabled = settings.providers.enabled(p.id);
+                st.enabled = settings.provider_on(p.id);
                 st
             })
             .collect();
@@ -216,7 +216,7 @@ impl Poller {
         {
             let mut snap = self.snap.lock().unwrap();
             for p in &mut snap.providers {
-                p.enabled = s.providers.enabled(&p.id);
+                p.enabled = s.provider_on(&p.id);
             }
         }
         self.publish();
@@ -287,17 +287,39 @@ impl Poller {
 
     /// `local_only`: read the logs, skip Cursor's export download.
     async fn refresh_spend(&self, local_only: bool) {
-        let (claude, codex, cursor) = {
+        // Logs for every provider that's on; downloads only for signed-in ones.
+        let ids: Vec<String> = {
             let snap = self.snap.lock().unwrap();
-            let on = |id: &str| snap.providers.iter().any(|p| p.id == id && p.enabled);
-            let cursor_in = !local_only && snap.providers.iter().any(|p| p.id == "cursor" && p.enabled && p.status != Status::SignedOut);
-            (on("claude"), on("codex"), cursor_in)
+            snap.providers
+                .iter()
+                .filter(|p| p.enabled && (!spend::is_remote(&p.id) || (!local_only && p.status != Status::SignedOut)))
+                .map(|p| p.id.clone())
+                .collect()
         };
-        let claude = tauri::async_runtime::spawn_blocking(move || if claude { spend::claude::scan() } else { None });
-        let codex = tauri::async_runtime::spawn_blocking(move || if codex { spend::codex::scan() } else { None });
-        let cursor = if cursor { spend::cursor::fetch().await } else { None };
-        let results = [("claude", claude.await.ok().flatten()), ("codex", codex.await.ok().flatten()), ("cursor", cursor)];
+        let tasks: Vec<_> = ids
+            .into_iter()
+            .map(|id| {
+                tauri::async_runtime::spawn(async move {
+                    let spend = if spend::is_remote(&id) {
+                        spend::fetch_remote(&id).await
+                    } else {
+                        let scan_id = id.clone();
+                        tauri::async_runtime::spawn_blocking(move || spend::scan_local(&scan_id)).await.ok().flatten()
+                    };
+                    (id, spend)
+                })
+            })
+            .collect();
+        let mut results = Vec::new();
+        for t in tasks {
+            if let Ok(r) = t.await {
+                results.push(r);
+            }
+        }
         let mut snap = self.snap.lock().unwrap();
+        for p in snap.providers.iter_mut().filter(|p| !p.enabled) {
+            p.spend = None;
+        }
         for (id, spend) in results {
             if let Some(p) = snap.providers.iter_mut().find(|p| p.id == id) {
                 // A failed export keeps the last good history rather than blanking it.

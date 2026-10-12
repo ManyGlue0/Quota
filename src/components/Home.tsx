@@ -61,7 +61,7 @@ function NoProviders() {
   return (
     <div className="empty">
       <h3>No providers on</h3>
-      <p>Turn on Claude, Codex or Cursor to see your limits and spend.</p>
+      <p>Turn on a provider to see your limits and spend.</p>
       <button className="pill-btn" onClick={() => setRoute({ name: "settings" })}>
         Open settings
       </button>
@@ -251,6 +251,8 @@ function Notice({ p, now }: { p: ProviderState; now: number }) {
       </div>
     );
   if (p.status === "loading" && p.metrics.length === 0) return <div className="notice faint">Checking your limits…</div>;
+  if (p.status === "ok" && p.metrics.length === 0)
+    return <div className="notice faint">{p.spend ? "No plan limits. Spend from your logs" : "No plan limits to show"}</div>;
   if (p.status === "stale" && p.message)
     return (
       <div className="notice warn">
@@ -276,6 +278,9 @@ function Meter({ m, now }: { m: Metric; now: number }) {
   let headline: string;
   if (m.kind === "money") {
     headline = showLeft ? `${money(Math.max(0, (m.limit ?? 0) - m.used), m.currency)} left` : `${money(m.used, m.currency)} of ${money(m.limit ?? 0, m.currency)}`;
+  } else if (m.kind === "count") {
+    const unit = m.unit ? ` ${m.unit}` : "";
+    headline = showLeft ? `${count(Math.max(0, (m.limit ?? 0) - m.used))}${unit} left` : `${count(m.used)} of ${count(m.limit ?? 0)}${unit}`;
   } else {
     headline = showLeft ? `${Math.max(0, Math.round(100 - f))}% left` : `${Math.round(f)}% used`;
   }
@@ -362,8 +367,10 @@ function SpendRows({ p, now }: { p: ProviderState; now: number }) {
 
 function extraValue(m: Metric): string {
   if (m.kind === "money") return m.limit ? `${money(m.used, m.currency)} of ${money(m.limit, m.currency)}` : money(m.used, m.currency);
-  return `${m.used} ${m.unit ?? ""}`.trim();
+  return `${count(m.used)} ${m.unit ?? ""}`.trim();
 }
+
+const count = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 // ---- Footer ------------------------------------------------------------------------
 

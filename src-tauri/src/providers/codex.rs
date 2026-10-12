@@ -52,6 +52,10 @@ fn load() -> Result<Login, FetchError> {
     Ok(login)
 }
 
+pub fn has_login() -> bool {
+    load().is_ok()
+}
+
 pub async fn fetch() -> FetchResult {
     let mut login = load()?;
     let near_expiry = login.access_token().and_then(jwt_exp_ms).is_some_and(|exp| exp <= now_ms() + 60_000);

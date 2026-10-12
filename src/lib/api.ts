@@ -66,7 +66,9 @@ export interface Settings {
   expanded: string[];
   spendMetric: "cost" | "tokens";
   refreshMinutes: number;
-  providers: { claude: boolean; codex: boolean; cursor: boolean };
+  /** Provider id → on (absent: off). */
+  providers: Record<string, boolean>;
+  knownProviders: string[];
   alertAt: number;
   glowOnReset: boolean;
 }
@@ -88,6 +90,13 @@ export interface HolsterStatus {
   port: number;
 }
 
+/** Where a key-based provider's key comes from. The key itself never reaches the UI. */
+export interface KeyStatus {
+  id: string;
+  source: "saved" | "env" | "none";
+  env: string[];
+}
+
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
 export const api = {
@@ -101,6 +110,9 @@ export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   updateSettings: (patch: DeepPartial<Settings>) => invoke<Settings>("update_settings", { patch }),
   holsterStatus: () => invoke<HolsterStatus>("holster_status"),
+  providerKeys: () => invoke<KeyStatus[]>("provider_keys"),
+  setProviderKey: (id: string, key: string) => invoke<Settings>("set_provider_key", { id, key }),
+  clearProviderKey: (id: string) => invoke("clear_provider_key", { id }),
   appInfo: () => invoke<{ version: string; hotkeyError: string | null }>("app_info"),
 };
 
