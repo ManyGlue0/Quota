@@ -2,8 +2,8 @@ MIT License
 
 Copyright (c) 2026 ManyGlue0
 Copyright (c) 2026 Robin Ebers (OpenUsage, https://github.com/robinebers/openusage)
-Copyright (c) 2023 Berri AI (LiteLLM price data, src-tauri/resources/pricing/litellm.json)
-Copyright (c) 2025 models.dev (price data, src-tauri/resources/pricing/models_dev.json)
+Copyright (c) 2023 Berri AI (LiteLLM, https://github.com/BerriAI/litellm)
+Copyright (c) 2025 models.dev (https://github.com/sst/models.dev)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
