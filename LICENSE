@@ -2,15 +2,8 @@ MIT License
 
 Copyright (c) 2026 ManyGlue0
 Copyright (c) 2026 Robin Ebers (OpenUsage, https://github.com/robinebers/openusage)
-
-Quota ports code, provider research and pricing data from OpenUsage, which is
-licensed under the MIT License by Robin Ebers. Both are covered by the terms
-below.
-
-Quota also bundles model price snapshots, each under its own MIT License:
-  src-tauri/resources/pricing/litellm.json    Copyright (c) 2023 Berri AI (LiteLLM)
-  src-tauri/resources/pricing/models_dev.json Copyright (c) 2025 models.dev
-Their notices are in THIRD_PARTY_NOTICES.md.
+Copyright (c) 2023 Berri AI (LiteLLM price data, src-tauri/resources/pricing/litellm.json)
+Copyright (c) 2025 models.dev (price data, src-tauri/resources/pricing/models_dev.json)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
