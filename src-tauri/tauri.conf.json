@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Quota",
+  "version": "0.1.3",
+  "identifier": "app.quota.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Quota",
+        "url": "index.html",
+        "width": 14,
+        "height": 88,
+        "minWidth": 1,
+        "minHeight": 1,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "visible": false,
+        "focus": false,
+        "shadow": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "shortDescription": "Your AI usage limits, at a glance",
+    "longDescription": "Quota lives in the Holster dock and shows how much of your Claude, Codex and Cursor limits you've used.",
+    "windows": {
+      "nsis": { "installMode": "currentUser", "installerHooks": "./windows/hooks.nsh", "installerIcon": "icons/icon.ico" }
+    }
+  }
+}
