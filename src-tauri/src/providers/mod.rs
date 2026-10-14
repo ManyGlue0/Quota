@@ -110,6 +110,18 @@ impl Metric {
         Self { limit: Some(limit).filter(|l| *l > 0.0), ..Self::count(id, label, n, unit) }
     }
 
+    /// Which window this limit is: "session" (5 hours), "weekly", "monthly",
+    /// "daily", or None for limits without one.
+    pub fn window(&self) -> Option<&'static str> {
+        window_by_duration(self.period_ms).map(|(id, _)| id).or(match self.id.as_str() {
+            "session" => Some("session"),
+            "weekly" => Some("weekly"),
+            "monthly" => Some("monthly"),
+            "daily" => Some("daily"),
+            _ => None,
+        })
+    }
+
     pub fn with_reset(mut self, resets_at: Option<i64>, period_ms: Option<i64>) -> Self {
         self.resets_at = resets_at;
         self.period_ms = period_ms;

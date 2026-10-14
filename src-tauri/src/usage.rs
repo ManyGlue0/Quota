@@ -384,7 +384,7 @@ fn apply(p: &mut ProviderState, result: providers::FetchResult, now: i64) {
 pub enum AlertKind {
     /// A limit you were close to started over.
     Reset,
-    /// A limit passed the alert threshold.
+    /// A limit passed a notification's percentage.
     Crossed,
     /// A limit hit 100%.
     RanOut,
@@ -410,8 +410,6 @@ fn alert(before: &ProviderState, after: &ProviderState, s: &Settings, now: i64) 
     if after.status != Status::Ok || before.metrics.is_empty() {
         return None;
     }
-    let threshold = s.alert_at as f64;
-    let close = if threshold > 0.0 { threshold } else { 80.0 };
     after
         .metrics
         .iter()
@@ -419,14 +417,17 @@ fn alert(before: &ProviderState, after: &ProviderState, s: &Settings, now: i64) 
         .filter_map(|m| {
             let was = before.metrics.iter().find(|b| b.id == m.id)?;
             let (fill, prev) = (m.fill()?, was.fill()?);
-            let kind = if threshold > 0.0 && prev < 100.0 && fill >= 100.0 {
-                AlertKind::RanOut
-            } else if threshold > 0.0 && prev < threshold && fill >= threshold {
-                AlertKind::Crossed
-            } else if s.notify_on_reset && prev >= close && fill < close && fill <= prev - 20.0 && was.resets_at != m.resets_at {
-                AlertKind::Reset
-            } else {
-                return None;
+            let rules: Vec<f64> = s.alerts.iter().filter(|r| r.watches(m.window())).map(|r| r.at as f64).collect();
+            // The highest percentage this refresh passed.
+            let passed = rules.iter().copied().filter(|&at| prev < at && fill >= at).reduce(f64::max);
+            // "Close" for a reset: this limit's lowest warning, else 80%.
+            let close = rules.iter().copied().filter(|&at| at < 100.0).reduce(f64::min).unwrap_or(80.0);
+            let rolled = was.resets_at != m.resets_at;
+            let kind = match passed {
+                Some(at) if at >= 100.0 => AlertKind::RanOut,
+                Some(_) => AlertKind::Crossed,
+                None if s.notify_on_reset && rolled && prev >= close && fill < close && fill <= prev - 20.0 => AlertKind::Reset,
+                None => return None,
             };
             Some(Alert {
                 kind,
@@ -486,9 +487,30 @@ mod tests {
         assert_eq!(kind(92.0, 1, 100.0, 1, &s), Some(AlertKind::RanOut));
         assert_eq!(kind(95.0, 1, 0.0, 2, &s), Some(AlertKind::Reset));
         assert_eq!(kind(40.0, 1, 0.0, 2, &s), None);
-        let off = Settings { alert_at: 0, notify_on_reset: false, ..Settings::default() };
+        let off = Settings { alerts: vec![], notify_on_reset: false, ..Settings::default() };
         assert_eq!(kind(70.0, 1, 100.0, 1, &off), None);
         assert_eq!(kind(95.0, 1, 0.0, 2, &off), None);
+    }
+
+    #[test]
+    fn rules_watch_their_own_window() {
+        use crate::settings::AlertRule;
+        let s = Settings { alerts: vec![AlertRule::new(50, "weekly"), AlertRule::new(90, "session")], ..Settings::default() };
+        let hour = 3_600_000;
+        let limit = |id: &str, fill, period| {
+            let mut p = state(fill, 1);
+            p.metrics = vec![Metric::percent(id, id, fill, Some(1), Some(period))];
+            p
+        };
+        let kind = |id, a, b, period| alert(&limit(id, a, period), &limit(id, b, period), &s, 0).map(|a| a.kind);
+        // Weekly passes 50%: yes. The 5-hour one passing 50%: not watched.
+        assert_eq!(kind("weekly", 40.0, 55.0, 7 * 24 * hour), Some(AlertKind::Crossed));
+        assert_eq!(kind("session", 40.0, 55.0, 5 * hour), None);
+        assert_eq!(kind("session", 85.0, 92.0, 5 * hour), Some(AlertKind::Crossed));
+        // Claude's per-model weekly limits count as weekly, by their window.
+        assert_eq!(kind("fable", 40.0, 60.0, 7 * 24 * hour), Some(AlertKind::Crossed));
+        // No 100% rule: running out isn't announced.
+        assert_eq!(kind("weekly", 95.0, 100.0, 7 * 24 * hour), None);
     }
 
     #[test]

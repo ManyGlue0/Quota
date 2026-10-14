@@ -48,8 +48,9 @@ OpenUsage and isn't affiliated with it.
 - **A glance from the dock.** Hover Quota's tile and the preview shows your fullest limits and
   today's spend. It's a page on disk, so it shows the last numbers even while Quota is closed.
 - **Checks only when you look.** By default nothing runs in the background: hovering the tile or
-  opening the panel asks for fresh numbers. Or pick every 5 or 15 minutes, and Holster notifies you
-  when a limit passes 80% (with when it'll run out at your pace), runs out, or resets.
+  opening the panel asks for fresh numbers. Or pick every 5 or 15 minutes and get Holster
+  notifications: as many as you like, each for any limit or just the 5-hour, weekly or monthly one,
+  at the percentage you choose. They say when you'll run out at your pace, and when it resets.
 - **Your logins stay yours.** Claude and Muse Code are asked through their own official tools; no
   token is read. API keys you paste are kept in Windows Credential Manager. See
   [How it reads your usage](#how-it-reads-your-usage).
@@ -133,7 +134,8 @@ To update, run a newer installer over the old one. Your settings live in
 - **Close it**: click outside, press `Esc` or the shortcut again. The pin keeps it open.
 - **Settings**: the button at the bottom of the panel, the tray menu, or `quota.exe --settings`.
   Providers on or off, API keys, when to check (when I look, every 5 or 15 minutes),
-  notifications, theme, shortcut, and launch at startup.
+  notifications (out of the box: any limit at 80% and when it runs out), theme, shortcut, and
+  launch at startup.
 
 <br clear="right">
 

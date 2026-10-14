@@ -1,6 +1,6 @@
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Minus, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type HolsterStatus, type KeyStatus, type ProviderState } from "../lib/api";
+import { api, type AlertLimit, type AlertRule, type HolsterStatus, type KeyStatus, type ProviderState } from "../lib/api";
 import { Logo } from "../lib/providers";
 import { useStore } from "../lib/store";
 import { useReportHeight } from "./Panel";
@@ -55,28 +55,9 @@ export function SettingsPage() {
               ]}
             />
           </Row>
-          {settings.refreshMinutes > 0 ? (
-            <>
-              <Row label="Notify at" hint="Holster tells you when a limit passes this or runs out">
-                <Segmented
-                  id="alert"
-                  value={String(settings.alertAt)}
-                  onChange={(v) => update({ alertAt: Number(v) })}
-                  options={[
-                    { value: "0", label: "Off" },
-                    { value: "80", label: "80%" },
-                    { value: "90", label: "90%" },
-                  ]}
-                />
-              </Row>
-              <Row label="Notify on reset" hint="When a limit you were close to resets">
-                <Toggle label="Notify on reset" on={settings.notifyOnReset} onChange={(v) => update({ notifyOnReset: v })} />
-              </Row>
-            </>
-          ) : (
-            <Row label="Notifications" hint="Need background checks: pick 5 or 15 min to get them" />
-          )}
         </Section>
+
+        <NotificationsSection />
 
         <Section title="Appearance">
           <Row label="Theme">
@@ -241,6 +222,80 @@ function providerHint(p: ProviderState, on: boolean, key?: KeyStatus): string {
     default:
       return "Checking…";
   }
+}
+
+const ALERT_LIMITS: { value: AlertLimit; label: string; name: string }[] = [
+  { value: "any", label: "Any", name: "Any limit" },
+  { value: "session", label: "5-hour", name: "5-hour limit" },
+  { value: "weekly", label: "Weekly", name: "Weekly limit" },
+  { value: "monthly", label: "Monthly", name: "Monthly limit" },
+];
+const MAX_ALERTS = 8;
+
+/** Holster notifications: a list of "this limit reaches this much", plus resets. */
+function NotificationsSection() {
+  const settings = useStore((s) => s.settings);
+  const update = useStore((s) => s.updateSettings);
+  if (!settings) return null;
+  const rules = settings.alerts;
+  const set = (alerts: AlertRule[]) => update({ alerts });
+  const change = (i: number, patch: Partial<AlertRule>) => set(rules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <Section title="Notifications">
+      {settings.refreshMinutes === 0 && (
+        <Row label="Background checks are off" hint="Notifications need them" warn>
+          <Button variant="default" className="key-btn" onClick={() => update({ refreshMinutes: 5 })}>
+            Every 5 min
+          </Button>
+        </Row>
+      )}
+      {rules.map((r, i) => (
+        <div key={i} className="alert-rule">
+          <div className="alert-rule-head">
+            <span className="alert-rule-text">
+              {ALERT_LIMITS.find((l) => l.value === r.limit)?.name ?? "Any limit"} {r.at >= 100 ? "runs out" : "reaches"}
+            </span>
+            <PercentStepper value={r.at} onChange={(at) => change(i, { at })} />
+            <IconButton label="Remove" className="small danger" onClick={() => set(rules.filter((_, j) => j !== i))}>
+              <X size={14} />
+            </IconButton>
+          </div>
+          <Segmented id={`alert-${i}`} value={r.limit} onChange={(limit) => change(i, { limit })} options={ALERT_LIMITS} />
+        </div>
+      ))}
+      <div className="alert-add">
+        <Button
+          variant="ghost"
+          className="key-btn"
+          disabled={rules.length >= MAX_ALERTS}
+          onClick={() => set([...rules, { at: rules.length ? 90 : 80, limit: "any" }])}
+        >
+          <Plus size={14} />
+          Add notification
+        </Button>
+      </div>
+      <Row label="When a limit resets" hint="If you were close to running out">
+        <Toggle label="Notify when a limit resets" on={settings.notifyOnReset} onChange={(v) => update({ notifyOnReset: v })} />
+      </Row>
+    </Section>
+  );
+}
+
+function PercentStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  // Steps of 5, from wherever the value is.
+  const down = Math.max(5, Math.ceil(value / 5) * 5 - 5);
+  const up = Math.min(100, Math.floor(value / 5) * 5 + 5);
+  return (
+    <div className="stepper">
+      <button aria-label="Lower" disabled={value <= 5} onClick={() => onChange(down)}>
+        <Minus size={13} />
+      </button>
+      <output>{value}%</output>
+      <button aria-label="Raise" disabled={value >= 100} onClick={() => onChange(up)}>
+        <Plus size={13} />
+      </button>
+    </div>
+  );
 }
 
 /** Quota lives in Holster's dock: say whether it's there, or what's wrong. */

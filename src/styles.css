@@ -1141,3 +1141,74 @@ kbd {
 .key-note.warn {
   color: var(--warn);
 }
+
+/* ---- notifications: one block per rule, a percent stepper ---------------- */
+.alert-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+}
+.alert-rule + .alert-rule,
+.set-row + .alert-rule,
+.set-row + .alert-add,
+.alert-rule + .alert-add,
+.alert-add + .set-row {
+  border-top: 1px solid var(--border);
+}
+.alert-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.alert-rule-text {
+  flex: 1;
+  min-width: 0;
+}
+.alert-rule .segmented {
+  display: flex;
+}
+.alert-rule .segmented button {
+  flex: 1;
+}
+.alert-add {
+  padding: 6px 0;
+}
+.alert-add .btn {
+  margin-left: -8px;
+  padding: 0 8px;
+}
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--hover);
+}
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--text-2);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.stepper button:hover:not(:disabled) {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+.stepper button:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.stepper output {
+  min-width: 40px;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}

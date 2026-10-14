@@ -69,8 +69,17 @@ export interface Settings {
   /** Provider id → on (absent: off). */
   providers: Record<string, boolean>;
   knownProviders: string[];
-  alertAt: number;
+  /** Holster notifies when a limit passes one of these. */
+  alerts: AlertRule[];
   notifyOnReset: boolean;
+}
+
+export type AlertLimit = "any" | "session" | "weekly" | "monthly";
+
+/** "Notify me when {limit} reaches {at}%" (100: when it runs out). */
+export interface AlertRule {
+  at: number;
+  limit: AlertLimit;
 }
 
 export type ShellMode = "closed" | "opening" | "open" | "closing";
