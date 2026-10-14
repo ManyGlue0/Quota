@@ -48,8 +48,8 @@ OpenUsage and isn't affiliated with it.
 - **A glance from the dock.** Hover Quota's tile and the preview shows your fullest limits and
   today's spend. It's a page on disk, so it shows the last numbers even while Quota is closed.
 - **Checks only when you look.** By default nothing runs in the background: hovering the tile or
-  opening the panel asks for fresh numbers. Or pick every 5 or 15 minutes, and Holster's tab glows
-  when a limit passes 80% or one you were close to resets.
+  opening the panel asks for fresh numbers. Or pick every 5 or 15 minutes, and Holster notifies you
+  when a limit passes 80% (with when it'll run out at your pace), runs out, or resets.
 - **Your logins stay yours.** Claude and Muse Code are asked through their own official tools; no
   token is read. API keys you paste are kept in Windows Credential Manager. See
   [How it reads your usage](#how-it-reads-your-usage).
@@ -132,8 +132,8 @@ To update, run a newer installer over the old one. Your settings live in
 - **Total spend**: switch Today, Yesterday and 30 Days, and Cost or Tokens from the title.
 - **Close it**: click outside, press `Esc` or the shortcut again. The pin keeps it open.
 - **Settings**: the button at the bottom of the panel, the tray menu, or `quota.exe --settings`.
-  Providers on or off, API keys, when to check (when I look, every 5 or 15 minutes), glow alerts,
-  theme, shortcut, and launch at startup.
+  Providers on or off, API keys, when to check (when I look, every 5 or 15 minutes),
+  notifications, theme, shortcut, and launch at startup.
 
 <br clear="right">
 
@@ -190,8 +190,8 @@ pnpm app-icon                      # re-render the app icons from src-tauri/icon
 src-tauri/src/
   lib.rs         app setup: window, tray, hotkey, plugins
   shell.rs       the panel window: spring-animated native bounds, acrylic, focus
-  holster.rs     Holster: manifest, preview page and state.json, loopback routes, glow signals
-  usage.rs       the poller: when to check, keeping the last good numbers, back-off, glows
+  holster.rs     Holster: manifest, preview page and state.json, loopback routes, notifications
+  usage.rs       the poller: when to check, keeping the last good numbers, back-off, alerts
   providers/     one file per provider: where its login is, what it asks, how answers map to limits
   spend/         local log scanners (Claude, Codex, Grok, OpenCode), Cursor's export, pricing
   secrets.rs     API keys in Windows Credential Manager

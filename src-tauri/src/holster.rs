@@ -8,8 +8,9 @@
 //!   `state.json` snapshot rewritten after every refresh, so Holster shows the
 //!   last known limits even while Quota isn't running. That folder holds
 //!   nothing else: Holster serves it.
-//! - When a limit crosses the alert threshold or resets while the panel is
-//!   closed, Quota sends Holster an activity signal and the dock's tab glows.
+//! - When a limit crosses the alert threshold, runs out or resets while the
+//!   panel is closed, Holster shows a notification (an older Holster without
+//!   notifications gets an activity signal: the dock's tab glows).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -29,7 +30,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::shell::Mode;
-use crate::usage::Snapshot;
+use crate::usage::{Alert, AlertKind, Snapshot};
 use crate::Core;
 
 pub const ID: &str = "quota";
@@ -231,15 +232,73 @@ fn short_label(id: &str, label: &str) -> String {
     }
 }
 
+/// The user is already looking: the panel is out.
+fn panel_open(app: &AppHandle) -> bool {
+    app.try_state::<Arc<Core>>().and_then(|c| c.try_shell().map(|s| s.mode() != Mode::Closed)).unwrap_or(false)
+}
+
+/// Shows each alert as a Holster notification, unless the panel is out. One
+/// notification per limit: a newer alert for it (ran out, then reset)
+/// replaces the card in place. A Holster without notifications glows instead.
+pub fn notify(app: &AppHandle, alerts: Vec<Alert>) {
+    if HOLSTER.get().is_none() || panel_open(app) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(api) = holster_api() else { return };
+        let now = chrono::Local::now();
+        let mut shown = true;
+        for a in &alerts {
+            let sent = client().post(format!("{api}/apps/{ID}/notify")).json(&notification(a, now)).send().await;
+            shown &= sent.is_ok_and(|r| r.status().is_success());
+        }
+        if !shown {
+            signal(&app);
+        }
+    });
+}
+
+fn notification(a: &Alert, now: chrono::DateTime<chrono::Local>) -> Value {
+    let pct = a.fill.round().clamp(0.0, 100.0);
+    let resets = a.resets_at.and_then(|t| clock(t, now)).map(|c| format!("Resets {c}."));
+    let (title, body, timeout) = match a.kind {
+        AlertKind::RanOut => (format!("{}: {} limit reached", a.name, a.label), resets, 15),
+        AlertKind::Crossed => {
+            let pace = a.runs_out_at.and_then(|t| clock(t, now)).map(|c| format!("At this pace it runs out {c}."));
+            let body = [pace, resets].into_iter().flatten().collect::<Vec<_>>().join(" ");
+            (format!("{}: {} at {pct}%", a.name, a.label), Some(body).filter(|b| !b.is_empty()), 10)
+        }
+        AlertKind::Reset => (format!("{}: {} reset", a.name, a.label), Some(format!("{}% left.", 100.0 - pct)), 8),
+    };
+    json!({
+        "id": format!("{}-{}", a.provider, a.metric).chars().take(64).collect::<String>(),
+        "title": title.chars().take(120).collect::<String>(),
+        "body": body,
+        "buttons": [{ "id": "open", "label": "Open", "primary": true, "open": true }],
+        "timeout": timeout,
+    })
+}
+
+/// "at 16:40", "tomorrow at 09:00", "Thu at 09:00" or "on Oct 21": a time
+/// that stays right however long the notification waits to be shown.
+fn clock(ms: i64, now: chrono::DateTime<chrono::Local>) -> Option<String> {
+    use chrono::TimeZone;
+    let t = chrono::Local.timestamp_millis_opt(ms).single()?;
+    let days = (t.date_naive() - now.date_naive()).num_days();
+    Some(match days {
+        0 => t.format("at %H:%M").to_string(),
+        1 => t.format("tomorrow at %H:%M").to_string(),
+        2..=6 => t.format("%a at %H:%M").to_string(),
+        _ => t.format("on %b %-d").to_string(),
+    })
+}
+
 /// Makes Holster's tab glow in Quota's color, unless the panel is out (the
 /// user is already looking) or a glow just happened.
 pub fn signal(app: &AppHandle) {
     let Some(me) = HOLSTER.get() else { return };
-    let closed = app
-        .try_state::<Arc<Core>>()
-        .and_then(|c| c.try_shell().map(|s| s.mode() == Mode::Closed))
-        .unwrap_or(true);
-    if !closed {
+    if panel_open(app) {
         return;
     }
     {
@@ -405,6 +464,33 @@ mod tests {
         }
         // A provider's name can't break out of the script: markup is data in a JSON string.
         assert!(!html.contains("</script><svg"));
+    }
+
+    #[test]
+    fn notification_text() {
+        use chrono::TimeZone;
+        let now = chrono::Local.with_ymd_and_hms(2026, 10, 14, 15, 0, 0).unwrap();
+        let at = |h: u32, d: u32| chrono::Local.with_ymd_and_hms(2026, 10, d, h, 40, 0).unwrap().timestamp_millis();
+        let alert = |kind, fill| Alert {
+            kind,
+            provider: "claude".into(),
+            name: "Claude".into(),
+            metric: "session".into(),
+            label: "Session".into(),
+            fill,
+            resets_at: Some(at(18, 14)),
+            runs_out_at: Some(at(16, 14)),
+        };
+        let n = notification(&alert(AlertKind::Crossed, 84.6), now);
+        assert_eq!(n["id"], "claude-session");
+        assert_eq!(n["title"], "Claude: Session at 85%");
+        assert_eq!(n["body"], "At this pace it runs out at 16:40. Resets at 18:40.");
+        let n = notification(&alert(AlertKind::RanOut, 100.0), now);
+        assert_eq!(n["title"], "Claude: Session limit reached");
+        assert_eq!(n["body"], "Resets at 18:40.");
+        assert_eq!(notification(&alert(AlertKind::Reset, 3.0), now)["body"], "97% left.");
+        assert_eq!(clock(at(9, 15), now).unwrap(), "tomorrow at 09:40");
+        assert_eq!(clock(at(9, 30), now).unwrap(), "on Oct 30");
     }
 
     #[test]

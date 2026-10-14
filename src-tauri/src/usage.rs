@@ -1,8 +1,8 @@
 //! The poller: refreshes every enabled provider on the user's interval (and
 //! on demand), keeps the last good numbers when a fetch fails, backs off when
-//! a service rate-limits us, and decides when a change is worth a glow on
-//! Holster's tab (a limit crossing the alert threshold, or a limit you were
-//! close to resetting).
+//! a service rate-limits us, and decides when a change is worth a Holster
+//! notification (a limit crossing the alert threshold or running out, or a
+//! limit you were close to resetting).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -252,7 +252,7 @@ impl Poller {
         }
 
         let settings = self.prefs.get();
-        let mut glow = false;
+        let mut alerts = Vec::new();
         {
             let mut snap = self.snap.lock().unwrap();
             let now = providers::now_ms();
@@ -260,18 +260,18 @@ impl Poller {
                 let Some(p) = snap.providers.iter_mut().find(|p| p.id == id) else { continue };
                 let before = p.clone();
                 apply(p, result, now);
-                // No glow for the first round after launch (nothing changed while
+                // Nothing for the first round after launch (nothing changed while
                 // we watched), nor when checks only happen because you're looking.
-                if !first && settings.refresh_minutes > 0 && worth_a_glow(&before, p, &settings) {
-                    glow = true;
+                if !first && settings.refresh_minutes > 0 {
+                    alerts.extend(alert(&before, p, &settings, now));
                 }
             }
             snap.checked_at = Some(now);
         }
         self.emit();
         self.publish();
-        if glow {
-            crate::holster::signal(&self.app);
+        if !alerts.is_empty() {
+            crate::holster::notify(&self.app, alerts);
         }
 
         // Spend second: the logs can take a while on the first scan, and the
@@ -380,23 +380,78 @@ fn apply(p: &mut ProviderState, result: providers::FetchResult, now: i64) {
     }
 }
 
-/// A plan limit crossed the alert threshold (or ran out), or a limit you
-/// were close to reset. Compared against the previous good numbers.
-fn worth_a_glow(before: &ProviderState, after: &ProviderState, s: &Settings) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AlertKind {
+    /// A limit you were close to started over.
+    Reset,
+    /// A limit passed the alert threshold.
+    Crossed,
+    /// A limit hit 100%.
+    RanOut,
+}
+
+/// A change in one limit worth a notification.
+#[derive(Debug, Clone)]
+pub struct Alert {
+    pub kind: AlertKind,
+    pub provider: String,
+    pub name: String,
+    pub metric: String,
+    pub label: String,
+    pub fill: f64,
+    pub resets_at: Option<i64>,
+    /// When it runs out at the current burn rate, if that's before the reset.
+    pub runs_out_at: Option<i64>,
+}
+
+/// The one change per provider worth telling you about (the most severe,
+/// then the fullest limit), compared against the previous good numbers.
+fn alert(before: &ProviderState, after: &ProviderState, s: &Settings, now: i64) -> Option<Alert> {
     if after.status != Status::Ok || before.metrics.is_empty() {
-        return false;
+        return None;
     }
     let threshold = s.alert_at as f64;
     let close = if threshold > 0.0 { threshold } else { 80.0 };
-    after.metrics.iter().filter(|m| m.primary).any(|m| {
-        let (Some(now), Some(prev)) = (m.fill(), before.metrics.iter().find(|b| b.id == m.id).and_then(Metric::fill)) else {
-            return false;
-        };
-        let crossed = threshold > 0.0 && ((prev < threshold && now >= threshold) || (prev < 100.0 && now >= 100.0));
-        let window_rolled = before.metrics.iter().find(|b| b.id == m.id).is_some_and(|b| b.resets_at != m.resets_at);
-        let reset = s.glow_on_reset && prev >= close && now < close && now <= prev - 20.0 && window_rolled;
-        crossed || reset
-    })
+    after
+        .metrics
+        .iter()
+        .filter(|m| m.primary)
+        .filter_map(|m| {
+            let was = before.metrics.iter().find(|b| b.id == m.id)?;
+            let (fill, prev) = (m.fill()?, was.fill()?);
+            let kind = if threshold > 0.0 && prev < 100.0 && fill >= 100.0 {
+                AlertKind::RanOut
+            } else if threshold > 0.0 && prev < threshold && fill >= threshold {
+                AlertKind::Crossed
+            } else if s.notify_on_reset && prev >= close && fill < close && fill <= prev - 20.0 && was.resets_at != m.resets_at {
+                AlertKind::Reset
+            } else {
+                return None;
+            };
+            Some(Alert {
+                kind,
+                provider: after.id.clone(),
+                name: after.name.clone(),
+                metric: m.id.clone(),
+                label: m.label.clone(),
+                fill,
+                resets_at: m.resets_at,
+                runs_out_at: runs_out_at(m, fill, now),
+            })
+        })
+        .max_by(|a, b| a.kind.cmp(&b.kind).then(a.fill.total_cmp(&b.fill)))
+}
+
+/// When a limit runs out at its burn rate so far, if before it resets (the
+/// panel's pace rule: windows too young to project don't get one).
+fn runs_out_at(m: &Metric, fill: f64, now: i64) -> Option<i64> {
+    let (resets, period) = (m.resets_at?, m.period_ms?);
+    let elapsed = now - (resets - period);
+    if fill <= 0.0 || fill >= 100.0 || now >= resets || elapsed < 60_000.max(period / 100) {
+        return None;
+    }
+    let eta = now + ((100.0 - fill) * elapsed as f64 / fill) as i64;
+    (eta < resets).then_some(eta)
 }
 
 #[cfg(test)]
@@ -422,16 +477,28 @@ mod tests {
     }
 
     #[test]
-    fn glows_on_crossing_and_reset_only() {
+    fn alerts_on_crossing_running_out_and_reset_only() {
         let s = Settings::default();
-        assert!(worth_a_glow(&state(70.0, 1), &state(85.0, 1), &s));
-        assert!(!worth_a_glow(&state(85.0, 1), &state(88.0, 1), &s));
-        assert!(worth_a_glow(&state(92.0, 1), &state(100.0, 1), &s));
-        assert!(worth_a_glow(&state(95.0, 1), &state(0.0, 2), &s));
-        assert!(!worth_a_glow(&state(40.0, 1), &state(0.0, 2), &s));
-        let off = Settings { alert_at: 0, glow_on_reset: false, ..Settings::default() };
-        assert!(!worth_a_glow(&state(70.0, 1), &state(100.0, 1), &off));
-        assert!(!worth_a_glow(&state(95.0, 1), &state(0.0, 2), &off));
+        let kind = |a: f64, ra: i64, b: f64, rb: i64, s: &Settings| alert(&state(a, ra), &state(b, rb), s, 0).map(|a| a.kind);
+        assert_eq!(kind(70.0, 1, 85.0, 1, &s), Some(AlertKind::Crossed));
+        assert_eq!(kind(85.0, 1, 88.0, 1, &s), None);
+        assert_eq!(kind(70.0, 1, 100.0, 1, &s), Some(AlertKind::RanOut));
+        assert_eq!(kind(92.0, 1, 100.0, 1, &s), Some(AlertKind::RanOut));
+        assert_eq!(kind(95.0, 1, 0.0, 2, &s), Some(AlertKind::Reset));
+        assert_eq!(kind(40.0, 1, 0.0, 2, &s), None);
+        let off = Settings { alert_at: 0, notify_on_reset: false, ..Settings::default() };
+        assert_eq!(kind(70.0, 1, 100.0, 1, &off), None);
+        assert_eq!(kind(95.0, 1, 0.0, 2, &off), None);
+    }
+
+    #[test]
+    fn projects_running_out_before_the_reset() {
+        let hour = 3_600_000;
+        // 5-hour window, 1 hour in, 50% used: out in another hour.
+        let m = Metric::percent("session", "Session", 50.0, Some(4 * hour), Some(5 * hour));
+        assert_eq!(runs_out_at(&m, 50.0, 0), Some(hour));
+        // 10% after an hour: lasts past the reset.
+        assert_eq!(runs_out_at(&m, 10.0, 0), None);
     }
 
     #[test]

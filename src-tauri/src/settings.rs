@@ -33,10 +33,11 @@ pub struct Settings {
     /// lists is new: it turns on once, only if its login is on this machine,
     /// and is the user's to manage after that.
     pub known_providers: Vec<String>,
-    /// Holster's tab glows when a limit crosses this percentage (0 = off).
+    /// Holster notifies when a limit crosses this percentage or runs out (0 = off).
     pub alert_at: u32,
-    /// Holster's tab glows when a limit you were close to resets.
-    pub glow_on_reset: bool,
+    /// Holster notifies when a limit you were close to resets.
+    #[serde(alias = "glowOnReset")]
+    pub notify_on_reset: bool,
 }
 
 impl Default for Settings {
@@ -54,7 +55,7 @@ impl Default for Settings {
             providers: BTreeMap::new(),
             known_providers: Vec::new(),
             alert_at: 80,
-            glow_on_reset: true,
+            notify_on_reset: true,
         }
     }
 }

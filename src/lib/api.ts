@@ -70,7 +70,7 @@ export interface Settings {
   providers: Record<string, boolean>;
   knownProviders: string[];
   alertAt: number;
-  glowOnReset: boolean;
+  notifyOnReset: boolean;
 }
 
 export type ShellMode = "closed" | "opening" | "open" | "closing";

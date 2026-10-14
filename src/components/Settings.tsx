@@ -57,7 +57,7 @@ export function SettingsPage() {
           </Row>
           {settings.refreshMinutes > 0 ? (
             <>
-              <Row label="Glow at" hint="Holster's tab glows when a limit passes this">
+              <Row label="Notify at" hint="Holster tells you when a limit passes this or runs out">
                 <Segmented
                   id="alert"
                   value={String(settings.alertAt)}
@@ -69,12 +69,12 @@ export function SettingsPage() {
                   ]}
                 />
               </Row>
-              <Row label="Glow on reset" hint="When a limit you were close to resets">
-                <Toggle label="Glow on reset" on={settings.glowOnReset} onChange={(v) => update({ glowOnReset: v })} />
+              <Row label="Notify on reset" hint="When a limit you were close to resets">
+                <Toggle label="Notify on reset" on={settings.notifyOnReset} onChange={(v) => update({ notifyOnReset: v })} />
               </Row>
             </>
           ) : (
-            <Row label="Glow alerts" hint="Need background checks: pick 5 or 15 min to get them" />
+            <Row label="Notifications" hint="Need background checks: pick 5 or 15 min to get them" />
           )}
         </Section>
 
