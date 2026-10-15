@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Flame, LogIn, Settings2, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, Flame, LogIn, Pin, Settings2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Metric, type ProviderState } from "../lib/api";
 import {
@@ -174,6 +174,7 @@ function TotalSpend({ providers, now }: { providers: ProviderState[]; now: numbe
 
 function ProviderSection({ p, index, now }: { p: ProviderState; index: number; now: number }) {
   const expanded = useStore((s) => s.settings?.expanded.includes(p.id) ?? false);
+  const pinned = useStore((s) => s.settings?.pinned.includes(p.id) ?? false);
   const update = useStore((s) => s.updateSettings);
   const meters = p.metrics.filter((m) => fill(m) !== null);
   const extras = p.metrics.filter((m) => fill(m) === null);
@@ -195,6 +196,7 @@ function ProviderSection({ p, index, now }: { p: ProviderState; index: number; n
         <Logo id={p.id} size={17} />
         <span className="provider-name">{p.name}</span>
         {p.plan && <span className="provider-plan">{p.plan}</span>}
+        <PreviewPin id={p.id} name={p.name} pinned={pinned} />
       </header>
       <div className="card">
         <Notice p={p} now={now} />
@@ -232,6 +234,21 @@ function ProviderSection({ p, index, now }: { p: ProviderState; index: number; n
         )}
       </div>
     </motion.section>
+  );
+}
+
+/** Pins a provider to Holster's preview. Shown on hover; stays lit once pinned. */
+function PreviewPin({ id, name, pinned }: { id: string; name: string; pinned: boolean }) {
+  const update = useStore((s) => s.updateSettings);
+  const toggle = () => {
+    const list = useStore.getState().settings?.pinned ?? [];
+    update({ pinned: pinned ? list.filter((x) => x !== id) : [...list, id] });
+  };
+  const label = pinned ? `Unpin ${name} from Holster's preview` : `Pin ${name} to Holster's preview`;
+  return (
+    <button className={`preview-pin ${pinned ? "on" : ""}`} onClick={toggle} aria-pressed={pinned} aria-label={label} title={label}>
+      <Pin size={13} fill={pinned ? "currentColor" : "none"} />
+    </button>
   );
 }
 

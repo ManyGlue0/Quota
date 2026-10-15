@@ -52,6 +52,9 @@ impl Core {
         if before.providers != after.providers || before.refresh_minutes != after.refresh_minutes {
             self.poller.apply_settings(after);
         }
+        if before.pinned != after.pinned {
+            self.poller.publish();
+        }
     }
 }
 
@@ -190,7 +193,7 @@ pub fn run() {
             apply_theme(&handle, &settings.theme);
             let _ = core.shell.set(Shell::install(&handle, prefs.clone()));
             // Quota lives in Holster's dock: preview, open route, signals.
-            holster::start(handle.clone(), &data_dir, &poller.snapshot());
+            holster::start(handle.clone(), &data_dir, &poller.snapshot(), &settings.pinned);
             poller.start();
 
             let shell_for_events = core.shell().clone();

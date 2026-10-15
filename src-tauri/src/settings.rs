@@ -29,6 +29,9 @@ pub struct Settings {
     pub exact_resets: bool,
     /// Provider cards whose caret is open.
     pub expanded: Vec<String>,
+    /// Providers pinned to Holster's preview: only these show there. None
+    /// pinned: the preview picks the ones closest to a limit.
+    pub pinned: Vec<String>,
     /// Total spend card: "cost" | "tokens".
     pub spend_metric: String,
     pub refresh_minutes: u32,
@@ -83,6 +86,7 @@ impl Default for Settings {
             show_left: false,
             exact_resets: false,
             expanded: Vec::new(),
+            pinned: Vec::new(),
             spend_metric: "cost".into(),
             refresh_minutes: 0,
             providers: BTreeMap::new(),
@@ -121,6 +125,13 @@ impl Settings {
     }
 
     fn normalized(mut self) -> Self {
+        let mut pinned: Vec<String> = Vec::new();
+        for id in std::mem::take(&mut self.pinned) {
+            if crate::providers::PROVIDERS.iter().any(|p| p.id == id) && !pinned.contains(&id) {
+                pinned.push(id);
+            }
+        }
+        self.pinned = pinned;
         if self.spend_metric != "tokens" {
             self.spend_metric = "cost".into();
         }

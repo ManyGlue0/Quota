@@ -64,6 +64,8 @@ export interface Settings {
   showLeft: boolean;
   exactResets: boolean;
   expanded: string[];
+  /** Providers pinned to Holster's preview (none: the fullest three show). */
+  pinned: string[];
   spendMetric: "cost" | "tokens";
   refreshMinutes: number;
   /** Provider id → on (absent: off). */

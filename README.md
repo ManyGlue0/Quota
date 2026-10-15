@@ -45,8 +45,9 @@ OpenUsage and isn't affiliated with it.
 - **What it costs.** Today, yesterday and the last 30 days, as a ring of each provider's share in
   its brand color, by cost or by tokens. Every provider card has a 30-day trend and the same
   periods under its caret.
-- **A glance from the dock.** Hover Quota's tile and the preview shows your fullest limits and
-  today's spend. It's a page on disk, so it shows the last numbers even while Quota is closed.
+- **A glance from the dock.** Hover Quota's tile and the preview shows the providers you pinned
+  (or, until you pin any, the three closest to a limit) and today's spend. It's a page on disk, so
+  it shows the last numbers even while Quota is closed.
 - **Checks only when you look.** By default nothing runs in the background: hovering the tile or
   opening the panel asks for fresh numbers. Or pick every 5 or 15 minutes and get Holster
   notifications: as many as you like, each for any limit or just the 5-hour, weekly or monthly one,
@@ -125,7 +126,8 @@ To update, run a newer installer over the old one. Your settings live in
 <img align="right" width="300" src="docs/images/settings-light.png#gh-light-mode-only" alt="Quota's settings: every provider with its sign-in state and a switch">
 
 - **Glance**: rest on Quota's tile in Holster. The preview shows the three providers closest to a
-  limit and today's spend.
+  limit and today's spend. To choose, hover a provider in the panel and click its pin: then the
+  preview shows every pinned provider, and only those.
 - **Open the panel**: click the tile, press `Ctrl+Alt+U`, or click the tray icon. It unfolds
   from the tile you clicked and is as tall as its content.
 - **Read a limit**: click its value to flip between used and left, and its reset to flip between

@@ -209,7 +209,7 @@
       // Provider marks (scripts/normalize-logos.mjs) and their tints (null: text
       // color), filled in by Quota when it writes this page.
       const LOGOS = /*QUOTA_LOGOS*/ {};
-      /** At most this many rows; with more providers on, the fullest ones show. */
+      /** Without pins, at most this many rows: the fullest ones show. */
       const MAX_ROWS = 3;
       // Lucide markup for the states (24-unit viewBox).
       const ICONS = {
@@ -369,8 +369,11 @@
         return row(progress(p, h.fill, verdict(h)), p, desc, stack);
       }
 
-      // The providers closest to a limit, in the dock order the user set.
+      // The pinned providers, all of them. None pinned: the ones closest to a
+      // limit. Either way in the order the user set.
       function shown(list) {
+        const pinned = list.filter((p) => p.pinned);
+        if (pinned.length) return pinned;
         if (list.length <= MAX_ROWS) return list;
         const fullness = (p) => (p.headline && p.headline.fill != null ? p.headline.fill : -1);
         const keep = new Set([...list].sort((a, b) => fullness(b) - fullness(a)).slice(0, MAX_ROWS));
@@ -385,7 +388,8 @@
         if (!state) {
           if (failed) rows.append(el("div", "error", "Couldn't read your usage"));
         } else if (state.providers.length) {
-          for (const p of shown(state.providers)) rows.append(providerRow(p));
+          const list = shown(state.providers);
+          for (const p of list) rows.append(providerRow(p));
           const key = today();
           const days = state.providers.flatMap((p) => p.days || []).filter((d) => d.date === key);
           if (peeking) {
@@ -393,7 +397,8 @@
           } else if (days.length) {
             meta.append("Today ", el("b", null, money(days.reduce((s, d) => s + d.cost, 0))));
           }
-          const more = state.providers.length - MAX_ROWS;
+          // Pinned ones are a choice: only the automatic pick hints at the rest.
+          const more = list.some((p) => p.pinned) ? 0 : state.providers.length - list.length;
           if (more > 0) meta.append(`${meta.childNodes.length ? " · " : ""}+${more} more`);
         } else {
           rows.append(row(neutral("gauge"), { name: "No providers on" }, "Turn one on in Quota's settings"));

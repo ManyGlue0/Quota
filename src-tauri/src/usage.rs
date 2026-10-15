@@ -344,8 +344,8 @@ impl Poller {
     }
 
     /// Rewrites the Holster preview snapshot.
-    fn publish(&self) {
-        crate::holster::publish(&self.snapshot());
+    pub fn publish(&self) {
+        crate::holster::publish(&self.snapshot(), &self.prefs.get().pinned);
     }
 }
 

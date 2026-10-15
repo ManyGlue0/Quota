@@ -69,8 +69,19 @@ fn preview_html() -> String {
 const PREVIEW_WIDTH: u32 = 300;
 const SIGNAL_EVERY: Duration = Duration::from_secs(10);
 
+/// Rows the preview shows: every pinned provider that's on, else the three
+/// closest to a limit.
+fn preview_rows(snap: &Snapshot, pinned: &[String]) -> usize {
+    let on = snap.providers.iter().filter(|p| p.enabled);
+    match on.clone().filter(|p| pinned.contains(&p.id)).count() {
+        0 => on.count().min(3),
+        n => n,
+    }
+}
+
 fn preview_height(rows: usize) -> u32 {
-    let n = rows.clamp(1, 3) as u32;
+    // Holster's card is at most 720 px tall: 11 rows.
+    let n = rows.clamp(1, 11) as u32;
     // padding 14 + head 16 + gap 10 + rows (54 each, 6 apart) + padding 14
     14 + 16 + 10 + n * 54 + (n - 1) * 6 + 14
 }
@@ -128,7 +139,7 @@ fn write_if_changed(file: &Path, text: &str) -> std::io::Result<()> {
 
 /// Starts the listener, writes the preview and registers with Holster.
 /// Call once the shell and the poller exist: `/holster/open` drives them.
-pub fn start(app: AppHandle, data_dir: &Path, snap: &Snapshot) {
+pub fn start(app: AppHandle, data_dir: &Path, snap: &Snapshot, pinned: &[String]) {
     let me = Arc::new(Holster {
         dir: data_dir.join("holster-preview"),
         status: Mutex::new(HolsterStatus::default()),
@@ -141,8 +152,8 @@ pub fn start(app: AppHandle, data_dir: &Path, snap: &Snapshot) {
             eprintln!("holster: couldn't write {name}: {e}");
         }
     }
-    publish(snap);
-    let rows = snap.providers.iter().filter(|p| p.enabled).count();
+    publish(snap, pinned);
+    let rows = preview_rows(snap, pinned);
 
     let app_for_state = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -155,7 +166,7 @@ pub fn start(app: AppHandle, data_dir: &Path, snap: &Snapshot) {
         };
         me.status.lock().unwrap().port = port;
         if let Some(core) = app_for_state.try_state::<Arc<Core>>() {
-            publish(&core.poller.snapshot());
+            core.poller.publish();
         }
         me.register(port, rows).await;
     });
@@ -169,8 +180,8 @@ pub fn status() -> HolsterStatus {
 
 /// Rewrites `state.json` for the preview: per enabled provider, its fullest
 /// limit (the page turns `resetsAt` into "resets in 4h" itself, so it stays
-/// right while Quota is closed).
-pub fn publish(snap: &Snapshot) {
+/// right while Quota is closed) and whether it's pinned there.
+pub fn publish(snap: &Snapshot, pinned: &[String]) {
     let Some(me) = HOLSTER.get() else { return };
     let providers: Vec<Value> = snap
         .providers
@@ -200,6 +211,7 @@ pub fn publish(snap: &Snapshot) {
                 "color": p.color,
                 "icon": p.icon,
                 "plan": p.plan,
+                "pinned": pinned.contains(&p.id),
                 "status": p.status,
                 "message": p.message,
                 "headline": headline,
@@ -497,5 +509,6 @@ mod tests {
     fn preview_sizes() {
         assert_eq!(preview_height(0), 108);
         assert_eq!(preview_height(3), 228);
+        assert_eq!(preview_height(11), 708);
     }
 }

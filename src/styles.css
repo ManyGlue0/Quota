@@ -1212,3 +1212,36 @@ kbd {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- pin to Holster's preview, at the end of a provider's title ---------- */
+.preview-pin {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px -4px -4px auto;
+  border-radius: 7px;
+  color: var(--text-3);
+  opacity: 0;
+  transform: rotate(45deg);
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.2s ease;
+}
+.provider:hover .preview-pin,
+.preview-pin:focus-visible {
+  opacity: 1;
+}
+.preview-pin:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.preview-pin.on {
+  opacity: 1;
+  color: var(--text-2);
+  transform: none;
+}
+.preview-pin:active {
+  transform: rotate(45deg) scale(0.9);
+}
+.preview-pin.on:active {
+  transform: scale(0.9);
+}
