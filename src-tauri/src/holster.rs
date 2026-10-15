@@ -409,13 +409,14 @@ async fn serve(app: AppHandle) -> std::io::Result<u16> {
         .route(
             "/holster/open",
             post(move |body: Bytes| async move {
-                let anchor_y = serde_json::from_slice::<Value>(&body)
-                    .ok()
-                    .and_then(|v| v.get("anchorY").and_then(Value::as_f64));
+                let body = serde_json::from_slice::<Value>(&body).unwrap_or(Value::Null);
+                // Open from the clicked tile, close toward Holster's tab.
+                let anchor_y = body.get("anchorY").and_then(Value::as_f64);
+                let tab_y = body.get("tabY").and_then(Value::as_f64);
                 // Answer first; the panel opens on its own threads.
                 if let Some(core) = app.try_state::<Arc<Core>>() {
                     if let Some(shell) = core.try_shell().cloned() {
-                        std::thread::spawn(move || shell.open_from_dock(anchor_y));
+                        std::thread::spawn(move || shell.open_from_dock(anchor_y, tab_y));
                     }
                     core.poller.refresh_if_old();
                 }

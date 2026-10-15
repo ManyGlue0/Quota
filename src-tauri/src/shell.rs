@@ -289,9 +289,12 @@ pub struct ShellState {
 }
 
 struct Geometry {
-    /// Where the panel unfolds from and folds back into: a sliver tucked into
-    /// the screen edge, centered on the Holster tile that opened it.
+    /// Where the panel unfolds from: a sliver tucked into the screen edge,
+    /// centered on the Holster tile that opened it.
     seed: Rect,
+    /// Where it folds back into: the same sliver at Holster's tab, which
+    /// slides back out right there once the panel is gone.
+    fold: Rect,
     panel: Rect,
     scale: f64,
 }
@@ -303,6 +306,8 @@ struct Geometry {
 struct Place {
     monitor: Option<String>,
     anchor_y: Option<f64>,
+    /// Vertical center of Holster's tab, from the latest open (it can move).
+    tab_y: Option<f64>,
     /// While open: the panel's top edge (physical px), kept as content grows.
     top: Option<f64>,
 }
@@ -399,9 +404,9 @@ impl Shell {
     }
 
     fn geometry(&self) -> Geometry {
-        let (monitor, anchor_y) = {
+        let (monitor, anchor_y, tab_y) = {
             let p = self.place.lock().unwrap();
-            (p.monitor.clone(), p.anchor_y)
+            (p.monitor.clone(), p.anchor_y, p.tab_y)
         };
         let mons = monitors();
         let mon = monitor
@@ -429,11 +434,13 @@ impl Shell {
         });
         let overhang = if neighbour_right || work.r < mon.bounds.r { 0.0 } else { (10.0 * s).round() };
         let (th, margin) = ((88.0 * s).round(), (8.0 * s).round());
-        let cy = anchor_y
-            .unwrap_or(work.t + DEFAULT_ANCHOR * work.h())
-            .clamp(work.t + th / 2.0 + margin, (work.b - th / 2.0 - margin).max(work.t + th / 2.0 + margin));
-        let top = (cy - th / 2.0).round();
-        let seed = Rect { l: edge + overhang - 1.0, t: top, r: edge + overhang, b: top + th };
+        let sliver_at = |y: f64| {
+            let cy = y.clamp(work.t + th / 2.0 + margin, (work.b - th / 2.0 - margin).max(work.t + th / 2.0 + margin));
+            let top = (cy - th / 2.0).round();
+            (cy, Rect { l: edge + overhang - 1.0, t: top, r: edge + overhang, b: top + th })
+        };
+        let (cy, seed) = sliver_at(anchor_y.unwrap_or(work.t + DEFAULT_ANCHOR * work.h()));
+        let fold = tab_y.map(|y| sliver_at(y).1).unwrap_or(seed);
 
         // A compact column, as tall as its content, unfolding beside the tile:
         // centered on it at first, then keeping its top while it grows.
@@ -444,7 +451,7 @@ impl Shell {
         let wanted_top = self.place.lock().unwrap().top.unwrap_or(cy - ph / 2.0);
         let pt = wanted_top.min(work.b - vm - ph).max(work.t + vm).round();
         let panel = Rect { l: edge - gap - pw, t: pt, r: edge - gap, b: pt + ph };
-        Geometry { seed, panel, scale: s }
+        Geometry { seed, fold, panel, scale: s }
     }
 
     fn emit_state(&self) {
@@ -467,8 +474,9 @@ impl Shell {
     }
 
     /// Holster's dock asked to open (a click on the Quota tile). The panel
-    /// unfolds on the monitor that was clicked, out of the tile's height.
-    pub fn open_from_dock(self: &Arc<Self>, anchor_y: Option<f64>) {
+    /// unfolds on the monitor that was clicked, out of the tile's height, and
+    /// later folds back toward Holster's tab (`tab_y`).
+    pub fn open_from_dock(self: &Arc<Self>, anchor_y: Option<f64>, tab_y: Option<f64>) {
         if self.mode() == Mode::Closed {
             let (cx, cy) = Self::cursor();
             let mons = monitors();
@@ -483,6 +491,10 @@ impl Shell {
             if anchor_y.is_some() {
                 p.anchor_y = anchor_y;
             }
+        }
+        // Read on every open: the user can move the tab in between.
+        if tab_y.is_some() {
+            self.place.lock().unwrap().tab_y = tab_y;
         }
         self.open();
     }
@@ -562,7 +574,7 @@ impl Shell {
             let g = me.geometry();
             let me2 = me.clone();
             me.anim.animate(
-                g.seed,
+                g.fold,
                 CLOSE_SPRING,
                 None,
                 Some(Box::new(move || {

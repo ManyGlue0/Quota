@@ -261,7 +261,8 @@
         const mark = LOGOS[id];
         if (!mark) return icon("gauge");
         const parsed = new DOMParser().parseFromString(mark.svg, "image/svg+xml").documentElement;
-        const s = svg({ class: "icon", viewBox: parsed.getAttribute("viewBox"), width: 17, height: 17, fill: "currentColor", "aria-hidden": "true" });
+        // Even, like the 36 px ring: centered on whole pixels, never half of one.
+        const s = svg({ class: "icon", viewBox: parsed.getAttribute("viewBox"), width: 18, height: 18, fill: "currentColor", "aria-hidden": "true" });
         s.append(...[...parsed.children].map((c) => document.importNode(c, true)));
         s.style.color = mark.tint ?? "var(--text)";
         return s;

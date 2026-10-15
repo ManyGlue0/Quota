@@ -1,6 +1,6 @@
 [package]
 name = "quota"
-version = "0.3.3"
+version = "0.3.4"
 description = "Quota: your AI usage limits, at a glance, in the Holster dock."
 license = "MIT"
 repository = "https://github.com/ManyGlue0/Quota"

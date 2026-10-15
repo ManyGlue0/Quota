@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Flame, LogIn, Pin, Settings2, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, Flame, LogIn, Pin, PinOff, Settings2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Metric, type ProviderState } from "../lib/api";
 import {
@@ -237,17 +237,28 @@ function ProviderSection({ p, index, now }: { p: ProviderState; index: number; n
   );
 }
 
-/** Pins a provider to Holster's preview. Shown on hover; stays lit once pinned. */
+/** Pins a provider to Holster's preview. Shown on hover; stays lit once pinned,
+ *  and hovering it then previews the unpin. */
 function PreviewPin({ id, name, pinned }: { id: string; name: string; pinned: boolean }) {
   const update = useStore((s) => s.updateSettings);
+  const [hover, setHover] = useState(false);
+  const Icon = pinned && hover ? PinOff : Pin;
   const toggle = () => {
     const list = useStore.getState().settings?.pinned ?? [];
     update({ pinned: pinned ? list.filter((x) => x !== id) : [...list, id] });
   };
   const label = pinned ? `Unpin ${name} from Holster's preview` : `Pin ${name} to Holster's preview`;
   return (
-    <button className={`preview-pin ${pinned ? "on" : ""}`} onClick={toggle} aria-pressed={pinned} aria-label={label} title={label}>
-      <Pin size={13} fill={pinned ? "currentColor" : "none"} />
+    <button
+      className={`preview-pin ${pinned ? "on" : ""}`}
+      onClick={toggle}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      aria-pressed={pinned}
+      aria-label={label}
+      title={label}
+    >
+      <Icon size={13} fill={pinned && Icon === Pin ? "currentColor" : "none"} />
     </button>
   );
 }
