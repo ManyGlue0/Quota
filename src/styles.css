@@ -1223,8 +1223,15 @@ kbd {
   border-radius: 7px;
   color: var(--text-3);
   opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+/* Unpinned, the pin leans; pinned, it stands up. Only the icon turns. */
+.preview-pin svg {
   transform: rotate(45deg);
-  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.2s ease;
+  transition: transform 0.2s ease;
+}
+.preview-pin.on svg {
+  transform: none;
 }
 .provider:hover .preview-pin,
 .preview-pin:focus-visible {
@@ -1237,11 +1244,7 @@ kbd {
 .preview-pin.on {
   opacity: 1;
   color: var(--text-2);
-  transform: none;
 }
 .preview-pin:active {
-  transform: rotate(45deg) scale(0.9);
-}
-.preview-pin.on:active {
   transform: scale(0.9);
 }
