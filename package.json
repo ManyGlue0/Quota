@@ -1,13 +1,14 @@
 {
   "name": "quota",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "app-icon": "node scripts/build-icon.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release:build": "node scripts/release-build.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",

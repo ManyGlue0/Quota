@@ -5,6 +5,7 @@ mod secrets;
 mod settings;
 mod spend;
 mod shell;
+mod update;
 mod usage;
 
 use std::sync::{Arc, OnceLock};
@@ -23,6 +24,7 @@ pub struct Core {
     pub prefs: Arc<Prefs>,
     pub poller: Arc<Poller>,
     shell: OnceLock<Arc<Shell>>,
+    pub update: update::Pending,
 }
 
 impl Core {
@@ -177,6 +179,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = app.path().app_data_dir()?;
@@ -185,7 +188,7 @@ pub fn run() {
             let prefs = Arc::new(Prefs::new(SettingsStore::new(&data_dir)));
             let settings = prefs.get();
             let poller = Poller::new(handle.clone(), prefs.clone(), &data_dir);
-            let core = Arc::new(Core { prefs: prefs.clone(), poller: poller.clone(), shell: OnceLock::new() });
+            let core = Arc::new(Core { prefs: prefs.clone(), poller: poller.clone(), shell: OnceLock::new(), update: Default::default() });
             app.manage(core.clone());
 
             // Window: real acrylic behind a transparent webview. Hidden until opened.
@@ -228,6 +231,8 @@ pub fn run() {
             commands::clear_provider_key,
             commands::holster_status,
             commands::app_info,
+            commands::update_check,
+            commands::update_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quota");

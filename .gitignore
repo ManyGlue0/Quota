@@ -2,3 +2,10 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+
+# Signing keys never belong in the repo
+*.key
+*.key.pub
+
+# Local notes, not for the repo
+docs/RELEASING.md

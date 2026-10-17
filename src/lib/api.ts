@@ -125,6 +125,8 @@ export const api = {
   setProviderKey: (id: string, key: string) => invoke<Settings>("set_provider_key", { id, key }),
   clearProviderKey: (id: string) => invoke("clear_provider_key", { id }),
   appInfo: () => invoke<{ version: string; hotkeyError: string | null }>("app_info"),
+  updateCheck: () => invoke<{ version: string; notes: string | null } | null>("update_check"),
+  updateInstall: () => invoke("update_install"),
 };
 
 export function on<T>(event: string, handler: (payload: T) => void): () => void {

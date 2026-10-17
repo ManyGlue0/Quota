@@ -1,6 +1,6 @@
-import { ChevronLeft, Minus, Plus, X } from "lucide-react";
+import { ChevronLeft, Download, Minus, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type AlertLimit, type AlertRule, type HolsterStatus, type KeyStatus, type ProviderState } from "../lib/api";
+import { api, on, type AlertLimit, type AlertRule, type HolsterStatus, type KeyStatus, type ProviderState } from "../lib/api";
 import { Logo } from "../lib/providers";
 import { useStore } from "../lib/store";
 import { useReportHeight } from "./Panel";
@@ -38,7 +38,7 @@ export function SettingsPage() {
       {settings && <div className="page-content settings-content" ref={content}>
         <ProvidersSection providers={usage?.providers ?? []} />
 
-        <Section title="Updates">
+        <Section title="Refresh">
           <Row
             stack
             label="Check"
@@ -87,12 +87,91 @@ export function SettingsPage() {
           </Row>
         </Section>
 
+        <UpdatesSection version={version} />
+
         <div className="about">
           Quota {version} · reads the logins already on this computer and sends them only to each provider. Costs are estimates at API rates.
         </div>
       </div>}
       </div>
     </div>
+  );
+}
+
+// ---- updates -----------------------------------------------------------------------
+
+type UpdateState =
+  | { step: "idle" | "checking" | "latest" | "installing" }
+  | { step: "available"; version: string }
+  | { step: "downloading"; version: string; pct: number | null }
+  | { step: "error"; message: string };
+
+/** Checks GitHub for a newer Quota when asked, and installs it on Update. */
+function UpdatesSection({ version }: { version: string }) {
+  const [state, setState] = useState<UpdateState>({ step: "idle" });
+
+  useEffect(
+    () =>
+      on<{ downloaded: number; total: number | null }>("update-progress", ({ downloaded, total }) =>
+        setState((s) =>
+          s.step === "downloading" ? { ...s, pct: total ? Math.min(100, Math.round((downloaded / total) * 100)) : null } : s,
+        ),
+      ),
+    [],
+  );
+
+  const check = async () => {
+    setState({ step: "checking" });
+    try {
+      const found = await api.updateCheck();
+      setState(found ? { step: "available", version: found.version } : { step: "latest" });
+    } catch (e) {
+      setState({ step: "error", message: String(e) });
+    }
+  };
+  const install = async (version: string) => {
+    setState({ step: "downloading", version, pct: 0 });
+    try {
+      await api.updateInstall();
+      setState({ step: "installing" });
+    } catch (e) {
+      setState({ step: "error", message: String(e) });
+    }
+  };
+
+  const hint =
+    state.step === "checking"
+      ? "Checking…"
+      : state.step === "latest"
+        ? "You have the latest version"
+        : state.step === "available"
+          ? `Version ${state.version} is ready. Quota restarts by itself`
+          : state.step === "downloading"
+            ? `Downloading ${state.version}${state.pct === null ? "…" : `, ${state.pct}%`}`
+            : state.step === "installing"
+              ? "Installing. Quota restarts by itself"
+              : state.step === "error"
+                ? state.message
+                : "Looks for a newer version on GitHub";
+
+  return (
+    <Section title="Updates">
+      <Row label={version ? `Quota ${version}` : "Quota"} hint={hint} warn={state.step === "error"}>
+        {state.step === "available" ? (
+          <Button variant="primary" onClick={() => install(state.version)}>
+            <Download size={14} /> Update
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            disabled={state.step === "checking" || state.step === "downloading" || state.step === "installing"}
+            onClick={check}
+          >
+            <RefreshCw size={14} className={state.step === "checking" ? "spin" : ""} /> Check
+          </Button>
+        )}
+      </Row>
+    </Section>
   );
 }
 

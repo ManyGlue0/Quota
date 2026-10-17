@@ -145,3 +145,17 @@ pub async fn app_info(app: AppHandle) -> Res<Value> {
         "hotkeyError": crate::hotkey_error(),
     }))
 }
+
+// ---- updates -------------------------------------------------------------------
+
+/// The newer version on GitHub, if there is one.
+#[tauri::command]
+pub async fn update_check(app: AppHandle, core: C<'_>) -> Res<Option<crate::update::Available>> {
+    crate::update::check(&app, &core.update).await
+}
+
+/// Installs what `update_check` found; Quota restarts as the new version.
+#[tauri::command]
+pub async fn update_install(app: AppHandle, core: C<'_>) -> Res<()> {
+    crate::update::install(&app, &core.update).await
+}

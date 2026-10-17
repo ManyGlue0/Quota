@@ -100,8 +100,10 @@ card's caret.
 The installer isn't code-signed, so Windows SmartScreen may warn you the first time: click
 **More info**, then **Run anyway**.
 
-To update, run a newer installer over the old one. Your settings live in
-`%APPDATA%\app.quota.desktop` and are kept.
+To update, open **Settings → Updates** and press **Check**: Quota downloads the new version,
+verifies its signature and restarts. (Before 0.3.5 there's no Updates section, so install that one
+by hand.) Running a newer installer over the old one works too. Either way your settings, in
+`%APPDATA%\app.quota.desktop`, are kept.
 
 ### Build it yourself
 
@@ -183,12 +185,19 @@ each provider's own requests.
 pnpm install
 pnpm tauri dev         # Vite + the app, with hot reload for the UI
 pnpm tauri build       # installer at src-tauri/target/release/bundle/nsis/
+pnpm release:build     # the same, signed for the updater, plus latest.json
 cd src-tauri && cargo test
 cargo test --release real_logs -- --ignored --nocapture           # scan this PC's logs
 cargo test --lib real_new_providers -- --ignored --nocapture      # ask the providers signed in here
 node scripts/normalize-logos.mjs   # refit scripts/logos/*.svg into src/assets/providers
 pnpm app-icon                      # re-render the app icons from src-tauri/icons/quota-icon.svg
 ```
+
+Releases are signed for the in-app updater. `pnpm release:build` needs Quota's private key from
+`pnpm tauri signer generate` (`QUOTA_SIGNING_KEY`, by default `%USERPROFILE%\.tauri\quota.key`)
+and its password (`QUOTA_SIGNING_KEY_PASSWORD`), in the shell or as Windows user variables. Attach
+the installer and `latest.json` to the GitHub release; the updater reads
+`releases/latest/download/latest.json`. A plain `pnpm tauri build` needs no key.
 
 ```
 src-tauri/src/
@@ -200,6 +209,7 @@ src-tauri/src/
   spend/         local log scanners (Claude, Codex, Grok, OpenCode), Cursor's export, pricing
   secrets.rs     API keys in Windows Credential Manager
   settings.rs    settings.json, and turning on providers found for the first time
+  update.rs      checking for and installing updates from GitHub Releases
 src/             React + TypeScript UI (Framer Motion, Lucide)
 src-tauri/holster-preview/   the preview page Holster shows on hover
 src-tauri/resources/pricing/ model prices: OpenUsage's supplement, LiteLLM and models.dev snapshots
