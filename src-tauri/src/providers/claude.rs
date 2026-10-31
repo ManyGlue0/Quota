@@ -78,7 +78,7 @@ fn explain(text: &str) -> FetchError {
 }
 
 /// The plan, from Claude Code's saved login (read locally, never sent):
-/// "pro" + "default_claude_max_5x" → "Pro" / "Max 5x".
+/// "pro" → "Pro", "max" + "default_claude_max_20x" → "Ultra".
 fn plan() -> Option<String> {
     let dir = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|d| !d.is_empty()).map(PathBuf::from).or_else(|| home().map(|h| h.join(".claude")))?;
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".credentials.json")).ok()?).ok()?;
@@ -91,6 +91,15 @@ fn plan_name(oauth: &Value) -> Option<String> {
         return None;
     }
     let tier = oauth["rateLimitTier"].as_str().unwrap_or("");
+    // Anthropic renamed Max 5x to Max and Max 20x to Ultra (2026-10-30), but
+    // Claude Code still saves the old tiers.
+    if base == "Max" {
+        match tier {
+            "default_claude_max_5x" => return Some("Max".into()),
+            "default_claude_max_20x" => return Some("Ultra".into()),
+            _ => {}
+        }
+    }
     let mult = tier
         .split('_')
         .find(|p| p.len() >= 2 && p.ends_with('x') && p[..p.len() - 1].bytes().all(|b| b.is_ascii_digit()));
@@ -296,7 +305,12 @@ mod tests {
     #[test]
     fn plans() {
         assert_eq!(plan_name(&json!({ "subscriptionType": "pro", "rateLimitTier": "default_claude_ai" })).as_deref(), Some("Pro"));
-        assert_eq!(plan_name(&json!({ "subscriptionType": "max", "rateLimitTier": "default_claude_max_20x" })).as_deref(), Some("Max 20x"));
+        assert_eq!(plan_name(&json!({ "subscriptionType": "max", "rateLimitTier": "default_claude_max_5x" })).as_deref(), Some("Max"));
+        assert_eq!(plan_name(&json!({ "subscriptionType": "max", "rateLimitTier": "default_claude_max_20x" })).as_deref(), Some("Ultra"));
+        // Once Claude Code saves the new name itself.
+        assert_eq!(plan_name(&json!({ "subscriptionType": "ultra", "rateLimitTier": "default_claude_ultra" })).as_deref(), Some("Ultra"));
+        // A tier nobody has named yet keeps its multiplier.
+        assert_eq!(plan_name(&json!({ "subscriptionType": "max", "rateLimitTier": "default_claude_max_40x" })).as_deref(), Some("Max 40x"));
     }
 }
 
