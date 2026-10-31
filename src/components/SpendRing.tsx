@@ -7,6 +7,14 @@ export function wedge(size: number, start: number, end: number, opts = { hole: 0
   const R = size / 2;
   const r = R * opts.hole;
   const c0 = size / 2;
+  // A slice that is the whole ring (one provider) has no neighbor to keep a
+  // gap from: a closed band, outer edge clockwise, hole counterclockwise.
+  if (end - start >= 1 - 1e-6) {
+    return [
+      `M${c0} ${c0 - R} A${R} ${R} 0 1 1 ${c0} ${c0 + R} A${R} ${R} 0 1 1 ${c0} ${c0 - R} Z`,
+      `M${c0} ${c0 - r} A${r} ${r} 0 1 0 ${c0} ${c0 + r} A${r} ${r} 0 1 0 ${c0} ${c0 - r} Z`,
+    ].join(" ");
+  }
   const halfGap = opts.gap / R / 2;
   const a0 = start * 2 * Math.PI + halfGap;
   const a1 = end * 2 * Math.PI - halfGap;

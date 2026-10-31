@@ -24,6 +24,8 @@ pub struct Rates {
     /// The source published a cache-read rate (else it's estimated at 10% of input).
     pub cache_read_explicit: bool,
     pub fast: f64,
+    /// Prompt tokens above which the long-context rates apply.
+    pub long_above: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -45,13 +47,16 @@ impl Tokens {
     }
 }
 
+/// Where catalogs' long-context rates start (`*_above_200k`). A supplement
+/// entry can set its own (`long_context_above_tokens`: Haiku 5.5's is 100k).
 const LONG_CONTEXT_TOKENS: u64 = 200_000;
 
 impl Rates {
-    /// Dollars for one request. Above 200k prompt tokens the long-context
-    /// rates apply to the whole request; 1-hour cache writes bill at 2x input.
+    /// Dollars for one request. Above `long_above` prompt tokens (cache reads
+    /// and writes included) the long-context rates apply to the whole
+    /// request; 1-hour cache writes bill at 2x input.
     pub fn cost(&self, t: &Tokens, long_context: bool) -> f64 {
-        let long = long_context && t.prompt() > LONG_CONTEXT_TOKENS;
+        let long = long_context && t.prompt() > self.long_above;
         let pick = |base: f64, l: Option<f64>| if long { l.unwrap_or(base) } else { base };
         let input = pick(self.input, self.input_long);
         let per = |n: u64, rate: f64| n as f64 * rate / 1_000_000.0;
@@ -76,6 +81,7 @@ impl Rates {
             cache_read_long: s(self.cache_read_long),
             cache_read_explicit: self.cache_read_explicit,
             fast: 1.0,
+            long_above: self.long_above,
         }
     }
 }
@@ -119,6 +125,7 @@ fn compact_catalog(text: &str) -> HashMap<String, Rates> {
                 cache_read_long: f("cra"),
                 cache_read_explicit: m.get("cre").and_then(Value::as_bool).unwrap_or(true),
                 fast: f("fast").unwrap_or(1.0),
+                long_above: LONG_CONTEXT_TOKENS,
             },
         );
     }
@@ -145,12 +152,13 @@ impl Pricing {
                     output: o,
                     cache_write: f("cache_write_per_million").unwrap_or(i),
                     cache_read: f("cache_read_per_million").unwrap_or(i * 0.1),
-                    input_long: None,
-                    output_long: None,
-                    cache_write_long: None,
-                    cache_read_long: None,
+                    input_long: f("input_long_per_million"),
+                    output_long: f("output_long_per_million"),
+                    cache_write_long: f("cache_write_long_per_million"),
+                    cache_read_long: f("cache_read_long_per_million"),
                     cache_read_explicit: f("cache_read_per_million").is_some(),
                     fast: fast_multipliers.get(model).copied().unwrap_or(1.0),
+                    long_above: e.get("long_context_above_tokens").and_then(Value::as_u64).unwrap_or(LONG_CONTEXT_TOKENS),
                 },
             );
         }
@@ -347,6 +355,15 @@ mod tests {
         let opus = p.resolve("claude-opus-5-5").expect("opus 5.5 priced");
         assert_eq!((opus.input, opus.output), (4.0, 20.0));
         assert_eq!(opus.fast, 2.0);
+        // Anthropic's price list, 2026-10-31.
+        let sonnet55 = p.resolve("claude-sonnet-5-5").expect("sonnet 5.5 priced");
+        assert_eq!((sonnet55.input, sonnet55.cache_write, sonnet55.cache_read, sonnet55.output), (2.0, 2.5, 0.1, 10.0));
+        let sonnet5 = p.resolve("claude-sonnet-5").expect("sonnet 5 priced");
+        assert_eq!((sonnet5.input, sonnet5.cache_write, sonnet5.cache_read, sonnet5.output), (2.0, 2.5, 0.2, 10.0));
+        let haiku = p.resolve("claude-haiku-5-5").expect("haiku 5.5 priced");
+        assert_eq!((haiku.input, haiku.cache_write, haiku.cache_read, haiku.output), (0.1, 0.125, 0.01, 0.5));
+        assert_eq!(haiku.long_above, 100_000);
+        assert!(p.resolve("claude-haiku-5.5-thinking-high").is_some());
         assert!(p.resolve("claude-sonnet-4-5-20250929").is_some());
         assert!(p.resolve("gpt-5.5").is_some());
         assert!(p.resolve("auto").is_some(), "cursor auto via supplement");
@@ -373,10 +390,28 @@ mod tests {
             cache_read_long: None,
             cache_read_explicit: true,
             fast: 2.0,
+            long_above: LONG_CONTEXT_TOKENS,
         };
         let t = Tokens { input: 1_000_000, output: 1_000_000, ..Default::default() };
         assert!((r.cost(&t, true) - 28.5).abs() < 1e-9, "long context applies above 200k");
         let t = Tokens { input: 100_000, output: 100_000, fast: true, ..Default::default() };
         assert!((r.cost(&t, true) - 3.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn haiku_5_5_prices_by_prompt_length() {
+        let haiku = pricing().resolve("claude-haiku-5-5").unwrap();
+        // 100k prompt tokens exactly: the low rates. $0.01 + $0.05.
+        let t = Tokens { input: 100_000, output: 100_000, ..Default::default() };
+        assert!((haiku.cost(&t, true) - 0.06).abs() < 1e-9);
+        // Over 100k, counting cache reads: every token at the high rates,
+        // output included. 1k * $0.50 + 100k * $0.05 + 10k * $2.50, per million.
+        let t = Tokens { input: 1_000, cache_read: 100_000, output: 10_000, ..Default::default() };
+        assert!((haiku.cost(&t, true) - 0.0305).abs() < 1e-9);
+        // 1-hour cache writes: 2x input, $0.20 / $1.
+        let t = Tokens { cache_write_1h: 1_000_000, ..Default::default() };
+        assert!((haiku.cost(&t, true) - 1.0).abs() < 1e-9);
+        let t = Tokens { cache_write_1h: 50_000, ..Default::default() };
+        assert!((haiku.cost(&t, true) - 0.01).abs() < 1e-9);
     }
 }
