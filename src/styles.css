@@ -18,9 +18,10 @@
   --text: #1a1a1f;
   --text-2: #55555f;
   --text-3: #8b8b95;
-  --accent: #6b5bd2;
-  --accent-soft: rgba(107, 91, 210, 0.12);
-  --focus: rgba(107, 91, 210, 0.32);
+  /* Quota's blue: the logo tile's (#2B7EFF), in both themes. */
+  --accent: #2b7eff;
+  --accent-soft: rgba(43, 126, 255, 0.12);
+  --focus: rgba(43, 126, 255, 0.32);
   --danger: #d4495b;
   --warn: #b7791f;
   --meter-ok: #2b7eff;
@@ -47,9 +48,9 @@
   --text: #f2f2f5;
   --text-2: #b4b4be;
   --text-3: #85858f;
-  --accent: #a596f5;
-  --accent-soft: rgba(165, 150, 245, 0.16);
-  --focus: rgba(165, 150, 245, 0.38);
+  --accent: #2b7eff;
+  --accent-soft: rgba(43, 126, 255, 0.16);
+  --focus: rgba(43, 126, 255, 0.4);
   --danger: #f0798a;
   --warn: #e9b65c;
   --meter-ok: #4c95ff;
