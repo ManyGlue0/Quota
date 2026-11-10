@@ -1,5 +1,6 @@
 mod commands;
 mod holster;
+mod prices;
 mod providers;
 mod secrets;
 mod settings;
@@ -23,6 +24,7 @@ use crate::usage::Poller;
 pub struct Core {
     pub prefs: Arc<Prefs>,
     pub poller: Arc<Poller>,
+    pub prices: Arc<prices::Prices>,
     shell: OnceLock<Arc<Shell>>,
     pub update: update::Pending,
 }
@@ -57,6 +59,7 @@ impl Core {
         if before.pinned != after.pinned {
             self.poller.publish();
         }
+        self.prices.apply_settings(before, after);
     }
 }
 
@@ -188,7 +191,15 @@ pub fn run() {
             let prefs = Arc::new(Prefs::new(SettingsStore::new(&data_dir)));
             let settings = prefs.get();
             let poller = Poller::new(handle.clone(), prefs.clone(), &data_dir);
-            let core = Arc::new(Core { prefs: prefs.clone(), poller: poller.clone(), shell: OnceLock::new(), update: Default::default() });
+            // Before the poller starts, so its first spend scan has the latest prices.
+            let prices = prices::Prices::new(handle.clone(), prefs.clone(), poller.clone(), &data_dir);
+            let core = Arc::new(Core {
+                prefs: prefs.clone(),
+                poller: poller.clone(),
+                prices: prices.clone(),
+                shell: OnceLock::new(),
+                update: Default::default(),
+            });
             app.manage(core.clone());
 
             // Window: real acrylic behind a transparent webview. Hidden until opened.
@@ -198,6 +209,7 @@ pub fn run() {
             // Quota lives in Holster's dock: preview, open route, signals.
             holster::start(handle.clone(), &data_dir, &poller.snapshot(), &settings.pinned);
             poller.start();
+            prices.start();
 
             let shell_for_events = core.shell().clone();
             let window_for_events = window.clone();
@@ -233,6 +245,7 @@ pub fn run() {
             commands::app_info,
             commands::update_check,
             commands::update_install,
+            commands::prices_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quota");

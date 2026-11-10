@@ -15,6 +15,10 @@ pub const MAX_ALERTS: usize = 8;
 /// the tile or when the panel opens, nothing in the background.
 pub const REFRESH_CHOICES: [u32; 3] = [0, 5, 15];
 
+/// How often new prices are downloaded (hours), besides at launch.
+pub const PRICE_HOURS: [u32; 5] = [1, 3, 6, 12, 24];
+const DEFAULT_PRICE_HOURS: u32 = 6;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -35,6 +39,11 @@ pub struct Settings {
     /// Total spend card: "cost" | "tokens".
     pub spend_metric: String,
     pub refresh_minutes: u32,
+    /// Download LiteLLM's and models.dev's current prices. Off: the prices
+    /// bundled with this version of Quota.
+    pub prices_online: bool,
+    /// One of `PRICE_HOURS`.
+    pub prices_hours: u32,
     /// Provider id → on. Absent means off.
     pub providers: BTreeMap<String, bool>,
     /// Every provider this install has seen. A provider missing from both
@@ -89,6 +98,8 @@ impl Default for Settings {
             pinned: Vec::new(),
             spend_metric: "cost".into(),
             refresh_minutes: 0,
+            prices_online: true,
+            prices_hours: DEFAULT_PRICE_HOURS,
             providers: BTreeMap::new(),
             known_providers: Vec::new(),
             alerts: default_alerts(),
@@ -137,6 +148,9 @@ impl Settings {
         }
         if !REFRESH_CHOICES.contains(&self.refresh_minutes) {
             self.refresh_minutes = if self.refresh_minutes < 5 { 5 } else { 15 };
+        }
+        if !PRICE_HOURS.contains(&self.prices_hours) {
+            self.prices_hours = DEFAULT_PRICE_HOURS;
         }
         // 0.2 had one threshold for every limit, plus running out.
         if let Some(old) = self.legacy_alert_at.take() {

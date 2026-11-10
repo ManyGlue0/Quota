@@ -88,6 +88,12 @@ what that usage would cost on the API, not your subscription bill. Grok and Open
 own costs, and those are used as-is. Models no price list knows are left out and named under the
 card's caret.
 
+**Prices** come from the public lists at [LiteLLM](https://github.com/BerriAI/litellm) and
+[models.dev](https://models.dev). Quota downloads them when it starts and then every 1, 3, 6, 12 or
+24 hours (your pick; 6 out of the box), so a new model gets its price without a new Quota, usually
+a few days after launch, once those lists add it. A list that hasn't changed costs a few hundred
+bytes. Turn the downloads off in Settings to use the copies built into your version of Quota.
+
 ## Install
 
 ### Download
@@ -137,7 +143,7 @@ by hand.) Running a newer installer over the old one works too. Either way your 
 - **Total spend**: switch Today, Yesterday and 30 Days, and Cost or Tokens from the title.
 - **Close it**: click outside, press `Esc` or the shortcut again. The pin keeps it open.
 - **Settings**: the button at the bottom of the panel, the tray menu, or `quota.exe --settings`.
-  Providers on or off, API keys, when to check (when I look, every 5 or 15 minutes),
+  Providers on or off, API keys, when to check (when I look, every 5 or 15 minutes), price downloads,
   notifications (out of the box: any limit at 80% and when it runs out), theme, shortcut, and
   launch at startup.
 
@@ -174,10 +180,11 @@ provider's own service.
 ## Your data
 
 Everything lives in `%APPDATA%\app.quota.desktop\`: `settings.json` (your choices),
-`usage.json` (the last known numbers, so the panel has something to show at once) and
-`holster-preview\` (the page Holster shows on hover, its `state.json` and the tile's mark).
-Spend is computed on your PC from local logs; nothing about your usage is sent anywhere except
-each provider's own requests.
+`usage.json` (the last known numbers, so the panel has something to show at once),
+`prices\` (the downloaded price lists) and `holster-preview\` (the page Holster shows on hover,
+its `state.json` and the tile's mark). Spend is computed on your PC from local logs; nothing about
+your usage is sent anywhere except each provider's own requests. The price downloads are plain
+requests for the two public lists and carry nothing about you.
 
 ## Development
 
@@ -189,6 +196,7 @@ pnpm release:build     # the same, signed for the updater, plus latest.json
 cd src-tauri && cargo test
 cargo test --release real_logs -- --ignored --nocapture           # scan this PC's logs
 cargo test --lib real_new_providers -- --ignored --nocapture      # ask the providers signed in here
+cargo test --lib refresh_bundled_prices -- --ignored              # rebuild the built-in price lists
 node scripts/normalize-logos.mjs   # refit scripts/logos/*.svg into src/assets/providers
 pnpm app-icon                      # re-render the app icons from src-tauri/icons/quota-icon.svg
 ```
@@ -210,9 +218,10 @@ src-tauri/src/
   secrets.rs     API keys in Windows Credential Manager
   settings.rs    settings.json, and turning on providers found for the first time
   update.rs      checking for and installing updates from GitHub Releases
+  prices.rs      downloading LiteLLM's and models.dev's prices on a schedule
 src/             React + TypeScript UI (Framer Motion, Lucide)
 src-tauri/holster-preview/   the preview page Holster shows on hover
-src-tauri/resources/pricing/ model prices: OpenUsage's supplement, LiteLLM and models.dev snapshots
+src-tauri/resources/pricing/ model prices: OpenUsage's supplement, built-in LiteLLM and models.dev lists
 ```
 
 ## Credits

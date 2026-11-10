@@ -1,6 +1,7 @@
 import { ChevronLeft, Download, Minus, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, on, type AlertLimit, type AlertRule, type HolsterStatus, type KeyStatus, type ProviderState } from "../lib/api";
+import { api, on, type AlertLimit, type AlertRule, type HolsterStatus, type KeyStatus, type PricesStatus, type ProviderState } from "../lib/api";
+import { ago, useNow } from "../lib/format";
 import { Logo } from "../lib/providers";
 import { useStore } from "../lib/store";
 import { useReportHeight } from "./Panel";
@@ -57,6 +58,8 @@ export function SettingsPage() {
           </Row>
         </Section>
 
+        <PricesSection />
+
         <NotificationsSection />
 
         <Section title="Appearance">
@@ -95,6 +98,56 @@ export function SettingsPage() {
       </div>}
       </div>
     </div>
+  );
+}
+
+// ---- prices ------------------------------------------------------------------------
+
+const PRICE_HOURS = [1, 3, 6, 12, 24];
+
+/** Prices come from LiteLLM's and models.dev's lists: downloaded fresh, or the
+ *  copies built into this version of Quota. */
+function PricesSection() {
+  const settings = useStore((s) => s.settings);
+  const update = useStore((s) => s.updateSettings);
+  const [st, setSt] = useState<PricesStatus | null>(null);
+  const now = useNow();
+  useEffect(() => {
+    api.pricesStatus().then(setSt);
+    return on<PricesStatus>("prices", setSt);
+  }, []);
+  if (!settings) return null;
+
+  const builtIn = st?.builtIn
+    ? new Date(`${st.builtIn}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : null;
+  const models = st ? ` · ${st.models.toLocaleString()} models` : "";
+  const hint = !settings.pricesOnline
+    ? `Using the prices built into Quota${builtIn ? `, from ${builtIn}` : ""}`
+    : st?.checking
+      ? "Checking for new prices…"
+      : st?.error
+        ? st.error
+        : st?.checkedAt
+          ? `Updated ${ago(st.checkedAt, now)}${models}`
+          : "From LiteLLM and models.dev";
+
+  return (
+    <Section title="Prices">
+      <Row label="Download new prices" hint={hint} warn={settings.pricesOnline && !!st?.error && !st.checking}>
+        <Toggle label="Download new prices" on={settings.pricesOnline} onChange={(v) => update({ pricesOnline: v })} />
+      </Row>
+      {settings.pricesOnline && (
+        <Row stack label="Check every" hint="And each time Quota starts">
+          <Segmented
+            id="prices-hours"
+            value={String(settings.pricesHours)}
+            onChange={(v) => update({ pricesHours: Number(v) })}
+            options={PRICE_HOURS.map((h) => ({ value: String(h), label: `${h}h` }))}
+          />
+        </Row>
+      )}
+    </Section>
   );
 }
 

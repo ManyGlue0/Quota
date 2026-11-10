@@ -146,6 +146,14 @@ pub async fn app_info(app: AppHandle) -> Res<Value> {
     }))
 }
 
+// ---- prices --------------------------------------------------------------------
+
+/// Where prices come from, when they were last checked, how many models.
+#[tauri::command]
+pub async fn prices_status(core: C<'_>) -> Res<crate::prices::PricesStatus> {
+    Ok(core.prices.status())
+}
+
 // ---- updates -------------------------------------------------------------------
 
 /// The newer version on GitHub, if there is one.

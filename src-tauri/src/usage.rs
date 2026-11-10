@@ -199,6 +199,18 @@ impl Poller {
         self.publish();
     }
 
+    /// Prices changed: recount spend from the logs already read, no network.
+    /// A refresh in progress finishes first.
+    pub async fn reprice(&self) {
+        for _ in 0..120 {
+            if !self.busy.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        self.warm_spend().await;
+    }
+
     /// Refresh now (the refresh button, a settings change).
     pub fn refresh(&self) {
         self.kick.notify_one();

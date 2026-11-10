@@ -7,6 +7,7 @@
 //! The logs are large (gigabytes), so scanning is incremental: each file is
 //! read once, then only the bytes appended since (logs are append-only).
 
+pub mod catalogs;
 pub mod claude;
 pub mod codex;
 pub mod cursor;

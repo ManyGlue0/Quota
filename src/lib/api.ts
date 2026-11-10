@@ -68,12 +68,28 @@ export interface Settings {
   pinned: string[];
   spendMetric: "cost" | "tokens";
   refreshMinutes: number;
+  /** Download LiteLLM's and models.dev's current prices (off: the built-in ones). */
+  pricesOnline: boolean;
+  /** How often, in hours, besides at launch. */
+  pricesHours: number;
   /** Provider id → on (absent: off). */
   providers: Record<string, boolean>;
   knownProviders: string[];
   /** Holster notifies when a limit passes one of these. */
   alerts: AlertRule[];
   notifyOnReset: boolean;
+}
+
+export interface PricesStatus {
+  online: boolean;
+  /** Prices in use come from a download (else the lists built into Quota). */
+  live: boolean;
+  checkedAt: number | null;
+  checking: boolean;
+  models: number;
+  /** When the built-in lists were made (YYYY-MM-DD). */
+  builtIn: string;
+  error: string | null;
 }
 
 export type AlertLimit = "any" | "session" | "weekly" | "monthly";
@@ -127,6 +143,7 @@ export const api = {
   appInfo: () => invoke<{ version: string; hotkeyError: string | null }>("app_info"),
   updateCheck: () => invoke<{ version: string; notes: string | null } | null>("update_check"),
   updateInstall: () => invoke("update_install"),
+  pricesStatus: () => invoke<PricesStatus>("prices_status"),
 };
 
 export function on<T>(event: string, handler: (payload: T) => void): () => void {

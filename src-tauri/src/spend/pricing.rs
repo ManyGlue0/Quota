@@ -4,9 +4,12 @@
 //! the OpenUsage supplement (Cursor-native models, fast multipliers, alias
 //! rules for log/CSV slugs), a LiteLLM snapshot (primary catalog) and a
 //! models.dev snapshot (gap filler). Rates are USD per million tokens.
+//!
+//! The two catalogs are also downloaded fresh on a schedule (`crate::prices`);
+//! `install` swaps them in, and the bundled copies are the offline fallback.
 
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, RwLock};
 
 use regex::Regex;
 use serde_json::Value;
@@ -47,8 +50,9 @@ impl Tokens {
     }
 }
 
-/// Where catalogs' long-context rates start (`*_above_200k`). A supplement
-/// entry can set its own (`long_context_above_tokens`: Haiku 5.5's is 100k).
+/// Where long-context rates start unless an entry says otherwise: a catalog
+/// entry with `la` (GPT-5.5's is 272k), a supplement entry with
+/// `long_context_above_tokens` (Haiku 5.5's is 100k).
 const LONG_CONTEXT_TOKENS: u64 = 200_000;
 
 impl Rates {
@@ -95,15 +99,29 @@ pub struct Pricing {
     memo: Mutex<HashMap<String, Option<Rates>>>,
 }
 
-pub fn pricing() -> &'static Pricing {
-    static P: OnceLock<Pricing> = OnceLock::new();
-    P.get_or_init(|| {
-        Pricing::load(
-            include_str!("../../resources/pricing/supplement.json"),
-            include_str!("../../resources/pricing/litellm.json"),
-            include_str!("../../resources/pricing/models_dev.json"),
-        )
-    })
+pub const BUNDLED_SUPPLEMENT: &str = include_str!("../../resources/pricing/supplement.json");
+pub const BUNDLED_LITELLM: &str = include_str!("../../resources/pricing/litellm.json");
+pub const BUNDLED_MODELS_DEV: &str = include_str!("../../resources/pricing/models_dev.json");
+
+static CURRENT: RwLock<Option<Arc<Pricing>>> = RwLock::new(None);
+
+/// The prices in use: the downloaded catalogs once `install`ed, else the bundled ones.
+pub fn pricing() -> Arc<Pricing> {
+    if let Some(p) = CURRENT.read().unwrap().as_ref() {
+        return p.clone();
+    }
+    CURRENT.write().unwrap().get_or_insert_with(|| Arc::new(Pricing::bundled())).clone()
+}
+
+/// Puts these prices in use for every cost computed from now on.
+pub fn install(p: Pricing) {
+    *CURRENT.write().unwrap() = Some(Arc::new(p));
+}
+
+/// A catalog's `retrieved_at` (RFC 3339, UTC), to tell which copy is newer.
+pub fn retrieved_at(catalog: &str) -> Option<String> {
+    let root: Value = serde_json::from_str(catalog).ok()?;
+    root["retrieved_at"].as_str().map(str::to_string)
 }
 
 fn compact_catalog(text: &str) -> HashMap<String, Rates> {
@@ -125,7 +143,7 @@ fn compact_catalog(text: &str) -> HashMap<String, Rates> {
                 cache_read_long: f("cra"),
                 cache_read_explicit: m.get("cre").and_then(Value::as_bool).unwrap_or(true),
                 fast: f("fast").unwrap_or(1.0),
-                long_above: LONG_CONTEXT_TOKENS,
+                long_above: m.get("la").and_then(Value::as_u64).unwrap_or(LONG_CONTEXT_TOKENS),
             },
         );
     }
@@ -133,6 +151,23 @@ fn compact_catalog(text: &str) -> HashMap<String, Rates> {
 }
 
 impl Pricing {
+    pub fn bundled() -> Self {
+        Self::with_catalogs(BUNDLED_LITELLM, BUNDLED_MODELS_DEV)
+    }
+
+    /// The bundled supplement over these LiteLLM and models.dev catalogs.
+    pub fn with_catalogs(primary: &str, secondary: &str) -> Self {
+        Self::load(BUNDLED_SUPPLEMENT, primary, secondary)
+    }
+
+    /// How many model names have a price.
+    pub fn models(&self) -> usize {
+        let mut keys: HashSet<&str> = self.supplement.keys().map(String::as_str).collect();
+        keys.extend(self.primary.keys().map(String::as_str));
+        keys.extend(self.secondary.keys().map(String::as_str));
+        keys.len()
+    }
+
     pub fn load(supplement: &str, primary: &str, secondary: &str) -> Self {
         let sup: Value = serde_json::from_str(supplement).unwrap_or(Value::Null);
         let fast_multipliers: HashMap<String, f64> = sup["fast_multipliers"]
@@ -168,12 +203,22 @@ impl Pricing {
             .flatten()
             .filter_map(|r| Some((Regex::new(r["pattern"].as_str()?).ok()?, r["canonical"].as_str()?.to_string())))
             .collect();
+        let mut primary = compact_catalog(primary);
+        let mut secondary = compact_catalog(secondary);
+        // Fast mode for catalog models the catalogs give no multiplier for.
+        for catalog in [&mut primary, &mut secondary] {
+            for (model, m) in &fast_multipliers {
+                if let Some(r) = catalog.get_mut(model).filter(|r| r.fast == 1.0) {
+                    r.fast = *m;
+                }
+            }
+        }
         Self {
             supplement: sup_rates,
             fast_multipliers,
             aliases,
-            primary: compact_catalog(primary),
-            secondary: compact_catalog(secondary),
+            primary,
+            secondary,
             memo: Mutex::new(HashMap::new()),
         }
     }
@@ -396,6 +441,20 @@ mod tests {
         assert!((r.cost(&t, true) - 28.5).abs() < 1e-9, "long context applies above 200k");
         let t = Tokens { input: 100_000, output: 100_000, fast: true, ..Default::default() };
         assert!((r.cost(&t, true) - 3.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn fable_5_2_under_every_name() {
+        let p = Pricing::bundled();
+        for name in ["claude-fable-5-2", "claude-fable-5.2", "claude-fable-5-2[1m]", "claude-fable-5-2-high", "Fable 5.2 (Auto Balanced)"] {
+            let r = p.resolve(name).unwrap_or_else(|| panic!("{name} unpriced"));
+            assert_eq!((r.input, r.cache_write, r.cache_read, r.output), (8.0, 10.0, 0.2, 40.0), "{name}");
+        }
+        // Fast mode: 2x ($16 / $80), from a fast request or a "-fast" name.
+        let t = Tokens { input: 1_000_000, output: 1_000_000, fast: true, ..Default::default() };
+        assert_eq!(p.resolve("claude-fable-5-2").unwrap().cost(&t, true), 96.0);
+        let fast = p.resolve("Fable 5.2 Fast (Auto Balanced)").unwrap();
+        assert_eq!((fast.input, fast.output), (16.0, 80.0));
     }
 
     #[test]

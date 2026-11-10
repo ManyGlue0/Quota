@@ -1,6 +1,6 @@
 {
-  "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://platform.claude.com/docs/en/about-claude/pricing for Claude Fable 5.1; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
-  "updated_at": "2026-10-31T00:00:00Z",
+  "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Quota bundles this file; the LiteLLM and models.dev catalogs are downloaded fresh on a schedule, so most new models need no entry here. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://platform.claude.com/docs/en/about-claude/pricing for Claude Fable 5.1; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
+  "updated_at": "2026-11-10T00:00:00Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -285,6 +285,7 @@
   "fast_multipliers": {
     "claude-opus-5": 2.0,
     "claude-opus-5-5": 2.0,
+    "claude-fable-5-2": 2.0,
     "gpt-5": 2.0,
     "gpt-5.1-codex": 2.0,
     "gpt-5.1-codex-max": 2.0,
@@ -354,6 +355,8 @@
     { "pattern": "^claude-opus-5[.-]5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-opus-5-5" },
     { "pattern": "^claude-5[.-]5-opus(?:-(?:low|medium|high|xhigh|max))?(?:-thinking)?-fast$", "canonical": "claude-opus-5-5-fast" },
     { "pattern": "^claude-5[.-]5-opus(?:-(?:low|medium|high|xhigh|max))?(?:-thinking)?$", "canonical": "claude-opus-5-5" },
+    { "pattern": "^claude-fable-5[.-]2(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?-fast$", "canonical": "claude-fable-5-2-fast" },
+    { "pattern": "^claude-fable-5[.-]2(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5-2" },
     { "pattern": "^claude-fable-5[.-]1(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5.1" },
     { "pattern": "^claude-fable-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5" },
     { "pattern": "^claude-sonnet-5[.-]5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-sonnet-5-5" },
@@ -440,6 +443,8 @@
     { "pattern": "(?i)^(?:Claude )?Opus 5\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-opus-5-5" },
     { "pattern": "(?i)^(?:Claude )?Sonnet 5\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-sonnet-5-5" },
     { "pattern": "(?i)^(?:Claude )?Sonnet 5 \\(Auto[^)]*\\)$", "canonical": "claude-sonnet-5" },
+    { "pattern": "(?i)^(?:Claude )?Fable 5\\.2 Fast \\(Auto[^)]*\\)$", "canonical": "claude-fable-5-2-fast" },
+    { "pattern": "(?i)^(?:Claude )?Fable 5\\.2 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5-2" },
     { "pattern": "(?i)^(?:Claude )?Fable 5\\.1 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5.1" },
     { "pattern": "(?i)^(?:Claude )?Fable 5 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5" },
     { "pattern": "(?i)^GPT-5\\.5 \\(Auto[^)]*\\)$", "canonical": "gpt-5.5" },
